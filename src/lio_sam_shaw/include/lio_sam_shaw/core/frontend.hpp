@@ -11,8 +11,8 @@ namespace lio_sam_shaw::core {
 
 class FrontEnd {
    public:
-    using SharedPtr = std::shared_ptr<IImuPreintegrator>;
-    using ConstSharedPtr = std::shared_ptr<const IImuPreintegrator>;
+    using SharedPtr = std::shared_ptr<FrontEnd>;
+    using ConstSharedPtr = std::shared_ptr<const FrontEnd>;
 
     FrontEnd() = default;
     ~FrontEnd() = default;

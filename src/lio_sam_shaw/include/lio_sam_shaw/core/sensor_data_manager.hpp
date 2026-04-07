@@ -12,6 +12,9 @@ namespace lio_sam_shaw::core {
 
 class SensorDataManager {
    public:
+    using SharedPtr = std::shared_ptr<SensorDataManager>;
+    using ConstSharedPtr = std::shared_ptr<const SensorDataManager>;
+
     SensorDataManager() = default;
 
     void addImuData(const ImuData& imu);
