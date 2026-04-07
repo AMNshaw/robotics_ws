@@ -1,0 +1,19 @@
+# ~/robotics_ws/src/lio_sam_shaw/.clang-format
+BasedOnStyle: Google
+
+# ROS 2 官方建議單行最大長度為 100 (Google 預設是 80，太短了)
+ColumnLimit: 100
+
+# 縮排使用 2 個空格 (ROS 2 / Google 標準)
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+
+# 指標的星號靠左 (例如: int* a，而不是 int *a)
+PointerAlignment: Left
+
+# 允許短的 if 寫在同一行
+AllowShortIfStatementsOnASingleLine: WithoutElse
+
+# 命名空間內不額外縮排 (避免整個檔案都往右退兩格)
+NamespaceIndentation: None
