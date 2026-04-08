@@ -13,7 +13,10 @@ struct ExtractedFeatures {
 };
 
 class IFeatureExtractor {
-   public:
+public:
+    using SharedPtr = std::shared_ptr<IFeatureExtractor>;
+    using ConstSharedPtr = std::shared_ptr<const IFeatureExtractor>;
+
     virtual ~IFeatureExtractor() = default;
 
     virtual ExtractedFeatures extract(const pcl::PointCloud<PointXYZIRT>::Ptr& deskewed_cloud) = 0;

@@ -3,13 +3,12 @@
 
 #include <vector>
 
-#include "lio_sam_shaw/core/frame.hpp"
 #include "lio_sam_shaw/core/sensor_data_types.hpp"
 
 namespace lio_sam_shaw::core {
 
 class IImuPreintegrator {
-   public:
+public:
     using SharedPtr = std::shared_ptr<IImuPreintegrator>;
     using ConstSharedPtr = std::shared_ptr<const IImuPreintegrator>;
 
@@ -25,7 +24,6 @@ class IImuPreintegrator {
         const std::vector<core::ImuData>& reprop_imu_segment) = 0;
 
     virtual NavState getLatestNavState() const = 0;
-    virtual std::vector<core::NavState> getAccumulatedNavStates() const = 0;
 };
 
 }  // namespace lio_sam_shaw::core

@@ -1,25 +1,35 @@
 #ifndef LIO_SAM_SHAW__CORE__BACKEND_HPP_
 #define LIO_SAM_SHAW__CORE__BACKEND_HPP_
 
-#include "lio_sam_shaw/core/frame.hpp"
-#include "lio_sam_shaw/core/i_feature_extractor.hpp"
-#include "lio_sam_shaw/core/i_imu_preintegrator.hpp"
-#include "lio_sam_shaw/core/i_scan_matcher.hpp"
-#include "lio_sam_shaw/core/i_scan_preprocessor.hpp"
+#include <optional>
+#include <utility>
+
+#include "lio_sam_shaw/core/i_loop_closure_detector.hpp"
+#include "lio_sam_shaw/core/i_map_builder.hpp"
+#include "lio_sam_shaw/core/i_map_optimizer.hpp"
+#include "lio_sam_shaw/core/lidar_frame.hpp"
 
 namespace lio_sam_shaw::core {
 
 class BackEnd {
-   public:
+public:
     using SharedPtr = std::shared_ptr<BackEnd>;
     using ConstSharedPtr = std::shared_ptr<const BackEnd>;
 
-    BackEnd() = default;
+    BackEnd(IMapBuilder::SharedPtr map_builder, IMapOptimizer::SharedPtr map_optimizer,
+            ILoopClosureDetector::SharedPtr loop_closure_detector);
     ~BackEnd() = default;
 
-    void processData();
+    // 回傳 loop closure 的修正對 {original_pose, corrected_pose}
+    // 沒有 loop closure 則回傳 nullopt
+    std::optional<std::pair<Eigen::Isometry3d, Eigen::Isometry3d>> processFrame(
+        const LidarFrame::SharedPtr& frame);
 
-   private:
+private:
+    IMapBuilder::SharedPtr map_builder_;
+    IMapOptimizer::SharedPtr map_optimizer_;
+    ILoopClosureDetector::SharedPtr loop_closure_detector_;
 };
+
 }  // namespace lio_sam_shaw::core
 #endif  // LIO_SAM_SHAW__CORE__BACKEND_HPP_

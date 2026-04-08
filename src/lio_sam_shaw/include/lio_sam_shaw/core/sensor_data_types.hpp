@@ -35,11 +35,7 @@ struct LidarData {
 
     // 2. 數據本體 (使用 Smart Pointer 實現 Zero-copy)
     PointCloudIRTPtr cloud;
-
-    // 3. 預設建構子
-    LidarData() : timestamp(0.0), time_start(0.0), time_end(0.0), cloud(nullptr) {}
-
-    // 4. 參數化建構子 (方便你在 queue 中直接 emplace_back)
+    LidarData() = default;
     LidarData(Timestamp t, Timestamp t_s, Timestamp t_e, const PointCloudIRTPtr& c)
         : timestamp(t), time_start(t_s), time_end(t_e), cloud(c) {}
 };
@@ -71,6 +67,38 @@ struct ImuData {
 struct ImuBias {
     Eigen::Vector3d acc = Eigen::Vector3d::Zero();
     Eigen::Vector3d gyr = Eigen::Vector3d::Zero();
+};
+
+struct FeatureSet {
+    using CloudPtr = pcl::PointCloud<PointXYZIRT>::Ptr;
+
+    // 1. 給 FAST-LIO 這種不需要提取特徵，直接硬幹的演算法用
+    CloudPtr raw_deskewed;
+
+    // 2. 給 LIO-SAM / LOAM 這種基於幾何特徵的演算法用
+    CloudPtr edge;
+    CloudPtr surf;
+
+    // (未來擴充) 給語意 SLAM 用
+    // CloudPtr ground;
+    // CloudPtr dynamic_objects;
+
+    // 建構子：確保所有指標一開始就不是 nullptr，避免 Segfault
+    FeatureSet()
+        : raw_deskewed(new pcl::PointCloud<PointXYZIRT>()),
+          edge(new pcl::PointCloud<PointXYZIRT>()),
+          surf(new pcl::PointCloud<PointXYZIRT>()) {}
+};
+
+struct ScanMatchResult {
+    // 1. 匹配收斂後的 6-DoF 位姿 (通常是在 Map 座標系下的 Global Pose)
+    Eigen::Isometry3d pose = Eigen::Isometry3d::Identity();
+    Eigen::Matrix<double, 6, 6> covariance = Eigen::Matrix<double, 6, 6>::Identity() * 1e-4;
+
+    // 3. 匹配健康度指標
+    bool is_converged = false;   // ICP 有沒有收斂？
+    bool is_degenerate = false;  // 是不是處於缺乏特徵的退化環境 (例如空曠隧道)？
+    double fitness_score = 0.0;  // 點到面的平均殘差
 };
 
 }  // namespace lio_sam_shaw::core

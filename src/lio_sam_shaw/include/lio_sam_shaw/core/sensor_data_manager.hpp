@@ -4,6 +4,7 @@
 #include <deque>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <vector>
 
 #include "lio_sam_shaw/core/sensor_data_types.hpp"
@@ -11,7 +12,7 @@
 namespace lio_sam_shaw::core {
 
 class SensorDataManager {
-   public:
+public:
     using SharedPtr = std::shared_ptr<SensorDataManager>;
     using ConstSharedPtr = std::shared_ptr<const SensorDataManager>;
 
@@ -20,10 +21,12 @@ class SensorDataManager {
     void addImuData(const ImuData& imu);
     void addLidarData(const LidarData& cloud);
 
+    bool getBatchImuData(const Timestamp& start_time, const Timestamp& end_time,
+                         std::vector<ImuData>& out_imu_batch);
     bool getSyncedData(LidarData& out_cloud, std::vector<ImuData>& out_imu_batch);
     bool hasSyncedData() const;
 
-   private:
+private:
     ImuData interpolateImu(const ImuData& imu1, const ImuData& imu2, const Timestamp& target_time);
 
     std::deque<ImuData> imu_queue_;

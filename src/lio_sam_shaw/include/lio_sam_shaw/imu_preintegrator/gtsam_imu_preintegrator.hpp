@@ -36,7 +36,7 @@ struct GtsamImuPreintegratorParams {
 enum class PreintegratorState { WAITING_FOR_FIRST_FRAME, INITIALIZED, OPTIMIZING };
 
 class GtsamImuPreintegrator : public core::IImuPreintegrator {
-   public:
+public:
     explicit GtsamImuPreintegrator(const GtsamImuPreintegratorParams& params);
     ~GtsamImuPreintegrator() override = default;
 
@@ -47,9 +47,8 @@ class GtsamImuPreintegrator : public core::IImuPreintegrator {
     core::NavState extrapolateState(const core::NavState& start_state,
                                     const core::ImuData& imu) const override;
     core::NavState getLatestNavState() const override;
-    std::vector<core::NavState> getAccumulatedNavStates() const override;
 
-   private:
+private:
     // ---- functions----
     void integrateImusAndPredictNoLock(const std::vector<core::ImuData>& imus);
     void initFirstFrame(const gtsam::Pose3& current_pose);
@@ -92,7 +91,6 @@ class GtsamImuPreintegrator : public core::IImuPreintegrator {
     gtsam::imuBias::ConstantBias last_optimized_bias_;
 
     core::NavState curr_state_{};
-    std::vector<core::NavState> accumulated_nav_states_;
     core::ImuData last_imu_{};
 };
 

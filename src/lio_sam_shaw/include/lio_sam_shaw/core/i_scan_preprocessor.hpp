@@ -8,16 +8,15 @@
 namespace lio_sam_shaw::core {
 
 class IScanPreprocessor {
-   public:
+public:
+    using SharedPtr = std::shared_ptr<IScanPreprocessor>;
+    using ConstSharedPtr = std::shared_ptr<const IScanPreprocessor>;
+
+    IScanPreprocessor() = default;
     virtual ~IScanPreprocessor() = default;
 
-    // 接收感測器數據緩衝
-    virtual void pushImuData(const ImuData& imu) = 0;
-    virtual void pushOdomData(const NavState& odom) = 0;
-
-    // 處理原始點雲，回傳去畸變後的點雲 (Deskewed Cloud)
-    virtual pcl::PointCloud<PointXYZIRT>::Ptr processCloud(
-        const pcl::PointCloud<PointXYZIRT>::Ptr& raw_cloud, double cloud_header_time) = 0;
+    virtual LidarData processCloud(const std::vector<ImuData>& imu_data,
+                                   const LidarData& raw_data) = 0;
 };
 
 }  // namespace lio_sam_shaw::core

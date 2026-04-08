@@ -80,7 +80,6 @@ void GtsamImuPreintegrator::integrateImusAndPredictNoLock(const std::vector<core
     const auto gtsam_state =
         imu_integrator_predict_->predict(last_optimized_state_, last_optimized_bias_);
     curr_state_ = fromGtsamNavState(gtsam_state, last_imu_.timestamp);
-    accumulated_nav_states_.push_back(curr_state_);
 }
 
 void GtsamImuPreintegrator::updateBiasAndRepropagateImus(
@@ -109,7 +108,6 @@ void GtsamImuPreintegrator::updateBiasAndRepropagateImus(
     }
 
     imu_integrator_predict_->resetIntegrationAndSetBias(last_optimized_bias_);
-    accumulated_nav_states_.clear();
     state_ = PreintegratorState::OPTIMIZING;
 
     integrateImusAndPredictNoLock(reprop_imu_segment);
@@ -143,11 +141,6 @@ core::NavState GtsamImuPreintegrator::extrapolateState(const core::NavState& sta
 core::NavState GtsamImuPreintegrator::getLatestNavState() const {
     std::lock_guard<std::mutex> lock(mtx_);
     return curr_state_;
-}
-
-std::vector<core::NavState> GtsamImuPreintegrator::getAccumulatedNavStates() const {
-    std::lock_guard<std::mutex> lock(mtx_);
-    return accumulated_nav_states_;
 }
 
 void GtsamImuPreintegrator::initFirstFrame(const gtsam::Pose3& imu_pose) {

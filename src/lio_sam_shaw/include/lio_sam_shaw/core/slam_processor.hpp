@@ -17,33 +17,35 @@
 namespace lio_sam_shaw::core {
 
 class SlamProcessor {
-   public:
-    SlamProcessor(SensorDataManager::SharedPtr data_manager, FrontEnd::SharedPtr frontend,
-                  BackEnd::SharedPtr backend) {}
-    ~SlamProcessor() = default;
+public:
+    explicit SlamProcessor(FrontEnd::SharedPtr frontend, BackEnd::SharedPtr backend);
+    ~SlamProcessor();
     SlamProcessor(const SlamProcessor&) = delete;
     SlamProcessor& operator=(const SlamProcessor&) = delete;
 
-    void processData();
+    void start();
 
     void feedLidar(const LidarData& lidar);
-    std::optional<NavState> feedImu();
+    void feedImu(const ImuData& imu);
 
-   private:
+private:
     void frontendThread();
     void backendThread();
 
     FrontEnd::SharedPtr front_end_;
     BackEnd::SharedPtr back_end_;
 
+    std::atomic<bool> run_{false};
     std::thread frontend_thread_;
     std::thread backend_thread_;
 
     std::mutex sync_mutex_;
     std::condition_variable sync_cv_;
 
+    // frontend -> backend 的線程安全 frame queue
     std::mutex backend_mutex_;
     std::condition_variable backend_cv_;
+    std::queue<LidarFrame::SharedPtr> frame_queue_;
 };
 
 }  // namespace lio_sam_shaw::core

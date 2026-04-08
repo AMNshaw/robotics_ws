@@ -12,6 +12,23 @@ void SensorDataManager::addLidarData(const LidarData& lidar) {
     lidar_queue_.push_back(lidar);
 }
 
+bool SensorDataManager::getBatchImuData(const Timestamp& start_time, const Timestamp& end_time,
+                                        std::vector<ImuData>& out_imu_batch) {
+    std::lock_guard<std::mutex> lock(imu_mutex_);
+
+    out_imu_batch.clear();
+
+    for (const auto& imu : imu_queue_) {
+        if (imu.timestamp >= start_time && imu.timestamp <= end_time) {
+            out_imu_batch.push_back(imu);
+        } else if (imu.timestamp > end_time) {
+            break;
+        }
+    }
+
+    return !out_imu_batch.empty();
+}
+
 bool SensorDataManager::getSyncedData(LidarData& out_lidar, std::vector<ImuData>& out_imu_batch) {
     std::scoped_lock lock(lidar_mutex_, imu_mutex_);
 
