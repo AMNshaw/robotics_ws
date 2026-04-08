@@ -47,11 +47,10 @@ bool FrontEnd::SensorDataSynced() { return data_manager_->hasSyncedData(); }
 std::optional<LidarFrame::SharedPtr> FrontEnd::processPipeline() {
     LidarData lidar;
     std::vector<ImuData> opt_imu_batch;
-    std::vector<ImuData> reprop_imu_batch;
+
     if (!data_manager_->getSyncedData(lidar, opt_imu_batch)) {
         return std::nullopt;
     }
-    data_manager_->getBatchImuData(lidar.timestamp, last_processed_imu_time_, reprop_imu_batch);
 
     // 整個 pipeline 使用同一份 snapshot，避免後端非同步修改造成不一致
     Eigen::Isometry3d correction_snapshot;
@@ -75,6 +74,8 @@ std::optional<LidarFrame::SharedPtr> FrontEnd::processPipeline() {
     // - 正常情況: correction_ = Identity → matched_result 即為 raw frame，無需轉換
     // - pending 情況: matched_result 在 corrected frame，當作新 anchor 傳入
     //   GTSAM graph 以此重建基點，之後 correction_ 歸 Identity
+    std::vector<ImuData> reprop_imu_batch;
+    data_manager_->getBatchImuData(lidar.timestamp, last_processed_imu_time_, reprop_imu_batch);
     imu_preintegrator_->updateBiasAndRepropagateImus(matched_result, opt_imu_batch,
                                                      reprop_imu_batch);
 
