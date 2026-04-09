@@ -1,5 +1,5 @@
-#ifndef LIO_SAM_SHAW__CORE__LIDAR_FRAME_HPP_
-#define LIO_SAM_SHAW__CORE__LIDAR_FRAME_HPP_
+#ifndef LIO_SLAM_SHAW__CORE__LIDAR_FRAME_HPP_
+#define LIO_SLAM_SHAW__CORE__LIDAR_FRAME_HPP_
 
 #include <pcl/point_cloud.h>
 
@@ -7,9 +7,9 @@
 #include <memory>
 #include <vector>
 
-#include "lio_sam_shaw/core/sensor_data_types.hpp"
+#include "lio_slam_shaw/core/sensor_data_types.hpp"
 
-namespace lio_sam_shaw::core {
+namespace lio_slam_shaw::core {
 
 struct LidarFrame {
     using SharedPtr = std::shared_ptr<LidarFrame>;
@@ -60,6 +60,6 @@ struct LidarFrame {
     }
 };
 
-}  // namespace lio_sam_shaw::core
+}  // namespace lio_slam_shaw::core
 
-#endif  // LIO_SAM_SHAW__CORE__LIDAR_FRAME_HPP_
+#endif  // LIO_SLAM_SHAW__CORE__LIDAR_FRAME_HPP_

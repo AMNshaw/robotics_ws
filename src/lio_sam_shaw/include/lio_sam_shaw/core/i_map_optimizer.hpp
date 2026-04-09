@@ -1,13 +1,13 @@
-#ifndef LIO_SAM_SHAW__CORE__I_MAP_OPTIMIZER_HPP_
-#define LIO_SAM_SHAW__CORE__I_MAP_OPTIMIZER_HPP_
+#ifndef LIO_SLAM_SHAW__CORE__I_MAP_OPTIMIZER_HPP_
+#define LIO_SLAM_SHAW__CORE__I_MAP_OPTIMIZER_HPP_
 
 #include <memory>
 #include <vector>
 
-#include "lio_sam_shaw/core/i_loop_closure_detector.hpp"
-#include "lio_sam_shaw/core/sensor_data_types.hpp"
+#include "lio_slam_shaw/core/i_loop_closure_detector.hpp"
+#include "lio_slam_shaw/core/sensor_data_types.hpp"
 
-namespace lio_sam_shaw::core {
+namespace lio_slam_shaw::core {
 
 class IMapOptimizer {
 public:
@@ -28,6 +28,6 @@ public:
     virtual NavState getKeyframePose(uint64_t keyframe_id) const = 0;
 };
 
-}  // namespace lio_sam_shaw::core
+}  // namespace lio_slam_shaw::core
 
-#endif  // LIO_SAM_SHAW__CORE__I_MAP_OPTIMIZER_HPP_
+#endif  // LIO_SLAM_SHAW__CORE__I_MAP_OPTIMIZER_HPP_

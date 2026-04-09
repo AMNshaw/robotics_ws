@@ -1,8 +1,8 @@
 #pragma once
 
-#include "lio_sam_shaw/core/frontend.hpp"
+#include "lio_slam_shaw/core/frontend.hpp"
 
-namespace lio_sam_shaw::core {
+namespace lio_slam_shaw::core {
 
 FrontEnd::FrontEnd(SensorDataManager::SharedPtr data_manager,
                    IScanPreprocessor::SharedPtr scan_preprocessor,
@@ -89,4 +89,4 @@ std::optional<LidarFrame::SharedPtr> FrontEnd::processPipeline() {
                                   processed_cloud.cloud, features, matched_result);
 }
 
-}  // namespace lio_sam_shaw::core
+}  // namespace lio_slam_shaw::core

@@ -1,14 +1,25 @@
-#include "lio_sam_shaw/core/sensor_data_manager.hpp"
+#include "lio_slam_shaw/core/sensor_data_manager.hpp"
 
-namespace lio_sam_shaw::core {
+namespace lio_slam_shaw::core {
 
 void SensorDataManager::addImuData(const ImuData& imu) {
     std::lock_guard<std::mutex> lock(imu_mutex_);
+    // Monotonic guard：拒絕時間戳倒退或重複的 IMU 資料
+    if (imu.timestamp <= last_imu_time_) {
+        return;
+    }
+    last_imu_time_ = imu.timestamp;
     imu_queue_.push_back(imu);
 }
 
 void SensorDataManager::addLidarData(const LidarData& lidar) {
     std::lock_guard<std::mutex> lock(lidar_mutex_);
+    // Monotonic guard：以 time_end 作為代表時間戳（最後一顆點），
+    // 拒絕時間戳倒退或重複的 LiDAR 幀
+    if (lidar.time_end <= last_lidar_time_) {
+        return;
+    }
+    last_lidar_time_ = lidar.time_end;
     lidar_queue_.push_back(lidar);
 }
 
@@ -103,4 +114,4 @@ ImuData SensorDataManager::interpolateImu(const ImuData& imu1, const ImuData& im
     return ImuData{target_time, interp_acc, interp_gyr};
 }
 
-}  // namespace lio_sam_shaw::core
+}  // namespace lio_slam_shaw::core

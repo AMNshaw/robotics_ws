@@ -1,5 +1,5 @@
-#ifndef LIO_SAM_SHAW__IMU_PREINTEGRATOR__GTSAM_IMU_PREINTEGRATOR_HPP_
-#define LIO_SAM_SHAW__IMU_PREINTEGRATOR__GTSAM_IMU_PREINTEGRATOR_HPP_
+#ifndef LIO_SLAM_SHAW__IMU_PREINTEGRATOR__GTSAM_IMU_PREINTEGRATOR_HPP_
+#define LIO_SLAM_SHAW__IMU_PREINTEGRATOR__GTSAM_IMU_PREINTEGRATOR_HPP_
 
 #include <chrono>
 #include <deque>
@@ -7,7 +7,7 @@
 #include <mutex>
 
 // Core 介面
-#include "lio_sam_shaw/core/i_imu_preintegrator.hpp"
+#include "lio_slam_shaw/core/i_imu_preintegrator.hpp"
 
 // GTSAM 依賴
 #include <gtsam/geometry/Pose3.h>
@@ -17,7 +17,7 @@
 #include <gtsam/nonlinear/NonlinearFactorGraph.h>
 #include <gtsam/nonlinear/Values.h>
 
-namespace lio_sam_shaw {
+namespace lio_slam_shaw {
 
 // 透過 Factory 或 Node 傳入的參數
 struct GtsamImuPreintegratorParams {
@@ -44,9 +44,8 @@ public:
     void updateBiasAndRepropagateImus(
         const core::NavState& optimized_state, const std::vector<core::ImuData>& opt_imu_segment,
         const std::vector<core::ImuData>& reprop_imu_segment) override;
-    core::NavState extrapolateState(const core::NavState& start_state,
-                                    const core::ImuData& imu) const override;
     core::NavState getLatestNavState() const override;
+    std::optional<core::NavState> queryNavState(const core::Timestamp& t) const override;
 
 private:
     // ---- functions----
@@ -61,7 +60,6 @@ private:
                           const gtsam::imuBias::ConstantBias& biasCur);
 
     gtsam::Pose3 toGtsamPose(const Eigen::Isometry3d& pose) const;
-    gtsam::NavState toGtsamNavState(const core::NavState& state) const;
     core::NavState fromGtsamNavState(const gtsam::NavState& g_state,
                                      const core::Timestamp& timestamp) const;
 
@@ -92,8 +90,12 @@ private:
 
     core::NavState curr_state_{};
     core::ImuData last_imu_{};
+
+    // 每次 integrateImusAndPredict 的中間預測狀態，供 deskew 插值查詢
+    // 在 updateBiasAndRepropagateImus 重新設定 bias 前清空，再由 repropagation 重建
+    std::deque<core::NavState> nav_state_queue_;
 };
 
-}  // namespace lio_sam_shaw
+}  // namespace lio_slam_shaw
 
-#endif  // LIO_SAM_SHAW__IMU_PREINTEGRATOR__GTSAM_IMU_PREINTEGRATOR_HPP_
+#endif  // LIO_SLAM_SHAW__IMU_PREINTEGRATOR__GTSAM_IMU_PREINTEGRATOR_HPP_

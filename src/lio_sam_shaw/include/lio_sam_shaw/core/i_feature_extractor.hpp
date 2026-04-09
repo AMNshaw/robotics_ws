@@ -1,16 +1,11 @@
-#ifndef LIO_SAM_SHAW__CORE__I_FEATURE_EXTRACTOR_HPP_
-#define LIO_SAM_SHAW__CORE__I_FEATURE_EXTRACTOR_HPP_
+#ifndef LIO_SLAM_SHAW__CORE__I_FEATURE_EXTRACTOR_HPP_
+#define LIO_SLAM_SHAW__CORE__I_FEATURE_EXTRACTOR_HPP_
 
 #include <memory>
 
-#include "lio_sam_shaw/core/sensor_data_types.hpp"
+#include "lio_slam_shaw/core/sensor_data_types.hpp"
 
-namespace lio_sam_shaw::core {
-
-struct ExtractedFeatures {
-    pcl::PointCloud<PointXYZIRT>::Ptr corner_cloud;
-    pcl::PointCloud<PointXYZIRT>::Ptr surface_cloud;
-};
+namespace lio_slam_shaw::core {
 
 class IFeatureExtractor {
 public:
@@ -19,9 +14,13 @@ public:
 
     virtual ~IFeatureExtractor() = default;
 
-    virtual ExtractedFeatures extract(const pcl::PointCloud<PointXYZIRT>::Ptr& deskewed_cloud) = 0;
+    // 從 deskewed LidarData 提取特徵，回傳 FeatureSet
+    // 實作可選擇：
+    //   - Passthrough：raw_deskewed 直接 alias LidarData::cloud（zero-copy，供 ikd-Tree 使用）
+    //   - LOAM-style：從點雲提取 edge / surf 幾何特徵
+    virtual FeatureSet extract(const LidarData& deskewed_lidar) = 0;
 };
 
-}  // namespace lio_sam_shaw::core
+}  // namespace lio_slam_shaw::core
 
-#endif  // LIO_SAM_SHAW__CORE__I_FEATURE_EXTRACTOR_HPP_
+#endif  // LIO_SLAM_SHAW__CORE__I_FEATURE_EXTRACTOR_HPP_

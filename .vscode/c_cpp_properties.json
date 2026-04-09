@@ -6,8 +6,6 @@
         "limitSymbolsToIncludedHeaders": false
       },
       "includePath": [
-        "/home/amnshaw/ros2_practice_ws/install/pubSub_practice/include/**",
-        "/home/amnshaw/ros2_practice_ws/install/examples_rclcpp_cbg_executor/include/**",
         "/opt/ros/humble/include/**",
         "/home/amnshaw/robotics_ws/src/lio_sam_shaw/include/**",
         "${workspaceFolder}/**",

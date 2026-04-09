@@ -1,5 +1,5 @@
-#ifndef LIO_SAM_SHAW__SLAM_NODE_HPP_
-#define LIO_SAM_SHAW__SLAM_NODE_HPP_
+#ifndef LIO_SLAM_SHAW__SLAM_NODE_HPP_
+#define LIO_SLAM_SHAW__SLAM_NODE_HPP_
 
 #include <deque>
 #include <memory>
@@ -12,13 +12,13 @@
 #include <sensor_msgs/msg/point_cloud2.hpp>
 
 // Core 介面
-#include "lio_sam_shaw/core/frame.hpp"
-#include "lio_sam_shaw/core/i_feature_extractor.hpp"
-#include "lio_sam_shaw/core/i_imu_preintegrator.hpp"
-#include "lio_sam_shaw/core/i_lidar_deskewer.hpp"
-#include "lio_sam_shaw/core/i_map_optimizer.hpp"
+#include "lio_slam_shaw/core/frame.hpp"
+#include "lio_slam_shaw/core/i_feature_extractor.hpp"
+#include "lio_slam_shaw/core/i_imu_preintegrator.hpp"
+#include "lio_slam_shaw/core/i_lidar_deskewer.hpp"
+#include "lio_slam_shaw/core/i_map_optimizer.hpp"
 
-namespace lio_sam_shaw {
+namespace lio_slam_shaw {
 
 core::Timestamp rosToCore(const rclcpp::Time& ros_time) {
     return core::Timestamp(std::chrono::nanoseconds(ros_time.nanoseconds()));
@@ -60,6 +60,6 @@ class SlamNode : public rclcpp::Node {
     rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pub_odom_mapped_;
 };
 
-}  // namespace lio_sam_shaw
+}  // namespace lio_slam_shaw
 
-#endif  // LIO_SAM_SHAW__SLAM_NODE_HPP_
+#endif  // LIO_SLAM_SHAW__SLAM_NODE_HPP_

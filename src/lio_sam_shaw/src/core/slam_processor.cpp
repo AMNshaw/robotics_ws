@@ -1,6 +1,6 @@
-#include "lio_sam_shaw/core/slam_processor.hpp"
+#include "lio_slam_shaw/core/slam_processor.hpp"
 
-namespace lio_sam_shaw::core {
+namespace lio_slam_shaw::core {
 
 SlamProcessor::SlamProcessor(FrontEnd::SharedPtr frontend, BackEnd::SharedPtr backend)
     : front_end_(std::move(frontend)), back_end_(std::move(backend)) {}
@@ -66,4 +66,4 @@ void SlamProcessor::backendThread() {
     }
 }
 
-}  // namespace lio_sam_shaw::core
+}  // namespace lio_slam_shaw::core

@@ -1,9 +1,11 @@
-#include "lio_sam_shaw/imu_preintegrator/gtsam_imu_preintegrator.hpp"
+#include "lio_slam_shaw/imu_preintegrator/gtsam_imu_preintegrator.hpp"
 
 #include <gtsam/inference/Symbol.h>
 #include <gtsam/slam/BetweenFactor.h>
 
-namespace lio_sam_shaw {
+#include <algorithm>
+
+namespace lio_slam_shaw {
 
 using gtsam::symbol_shorthand::B;
 using gtsam::symbol_shorthand::V;
@@ -73,13 +75,16 @@ void GtsamImuPreintegrator::integrateImusAndPredictNoLock(const std::vector<core
         imu_integrator_predict_->integrateMeasurement(mean_acc, mean_gyr, dt);
         integrated = true;
 
+        // 將當前預測狀態存入 queue，供 deskew 插值使用
+        const auto gtsam_mid =
+            imu_integrator_predict_->predict(last_optimized_state_, last_optimized_bias_);
+        nav_state_queue_.push_back(fromGtsamNavState(gtsam_mid, imu.timestamp));
+
         last_imu_ = imu;
     }
     if (!integrated) return;
 
-    const auto gtsam_state =
-        imu_integrator_predict_->predict(last_optimized_state_, last_optimized_bias_);
-    curr_state_ = fromGtsamNavState(gtsam_state, last_imu_.timestamp);
+    curr_state_ = nav_state_queue_.back();
 }
 
 void GtsamImuPreintegrator::updateBiasAndRepropagateImus(
@@ -110,37 +115,55 @@ void GtsamImuPreintegrator::updateBiasAndRepropagateImus(
     imu_integrator_predict_->resetIntegrationAndSetBias(last_optimized_bias_);
     state_ = PreintegratorState::OPTIMIZING;
 
+    // bias 已更新，舊的預測狀態全部作廢；repropagation 會重新填入新狀態
+    nav_state_queue_.clear();
+
     integrateImusAndPredictNoLock(reprop_imu_segment);
 
     graph_node_index_++;
 }
 
-core::NavState GtsamImuPreintegrator::extrapolateState(const core::NavState& start_state,
-                                                       const core::ImuData& imu) const {
-    gtsam::imuBias::ConstantBias bias;
-    {
-        std::lock_guard<std::mutex> lock(mtx_);
-        bias = last_optimized_bias_;
-    }
-    gtsam::PreintegratedImuMeasurements temp_integrator(gtsam_preint_params_, bias);
-
-    double dt = std::chrono::duration<double>(imu.timestamp - start_state.timestamp).count();
-
-    if (dt > 0) {
-        temp_integrator.integrateMeasurement(imu.acc, imu.gyr, dt);
-    } else
-        return start_state;
-
-    // 3. 推算結果
-    gtsam::NavState g_start = toGtsamNavState(start_state);
-    gtsam::NavState g_end = temp_integrator.predict(g_start, bias);
-
-    return fromGtsamNavState(g_end, imu.timestamp);
-}
-
 core::NavState GtsamImuPreintegrator::getLatestNavState() const {
     std::lock_guard<std::mutex> lock(mtx_);
     return curr_state_;
+}
+
+std::optional<core::NavState> GtsamImuPreintegrator::queryNavState(const core::Timestamp& t) const {
+    std::lock_guard<std::mutex> lock(mtx_);
+
+    if (nav_state_queue_.empty()) return std::nullopt;
+
+    // clamp 到 queue 兩端
+    if (t <= nav_state_queue_.front().timestamp) return nav_state_queue_.front();
+    if (t >= nav_state_queue_.back().timestamp) return nav_state_queue_.back();
+
+    // 二分搜尋出夾住 t 的區間 [it-1, it]
+    auto it = std::lower_bound(
+        nav_state_queue_.begin(), nav_state_queue_.end(), t,
+        [](const core::NavState& s, const core::Timestamp& ts) { return s.timestamp < ts; });
+
+    const auto& s1 = *it;
+    const auto& s0 = *(it - 1);
+
+    double total = getDeltaSec(s0.timestamp, s1.timestamp);
+    if (total < 1e-9) return s0;
+
+    double alpha = std::clamp(getDeltaSec(s0.timestamp, t) / total, 0.0, 1.0);
+
+    // 旋轉 slerp，位置 & 速度線性插值
+    Eigen::Quaterniond q0(s0.pose.linear());
+    Eigen::Quaterniond q1(s1.pose.linear());
+
+    core::NavState result;
+    result.timestamp = t;
+    result.pose.linear() = q0.slerp(alpha, q1).normalized().toRotationMatrix();
+    result.pose.translation() =
+        s0.pose.translation() + alpha * (s1.pose.translation() - s0.pose.translation());
+    result.vel = s0.vel + alpha * (s1.vel - s0.vel);
+    result.acc_bias = s0.acc_bias;
+    result.gyr_bias = s0.gyr_bias;
+    result.pose_cov = s0.pose_cov;
+    return result;
 }
 
 void GtsamImuPreintegrator::initFirstFrame(const gtsam::Pose3& imu_pose) {
@@ -294,13 +317,10 @@ void GtsamImuPreintegrator::resetOptimization() {
 gtsam::Pose3 GtsamImuPreintegrator::toGtsamPose(const Eigen::Isometry3d& pose) const {
     return gtsam::Pose3(pose.matrix());
 }
-gtsam::NavState GtsamImuPreintegrator::toGtsamNavState(const core::NavState& state) const {
-    return gtsam::NavState(toGtsamPose(state.pose), state.vel);
-}
 core::NavState GtsamImuPreintegrator::fromGtsamNavState(const gtsam::NavState& g_state,
                                                         const core::Timestamp& timestamp) const {
     return core::NavState{timestamp, Eigen::Isometry3d(g_state.pose().matrix()),
                           g_state.velocity()};
 }
 
-}  // namespace lio_sam_shaw
+}  // namespace lio_slam_shaw

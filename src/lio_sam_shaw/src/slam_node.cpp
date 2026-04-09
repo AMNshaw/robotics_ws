@@ -1,6 +1,6 @@
-#include "lio_sam_shaw/slam_node.hpp"
+#include "lio_slam_shaw/slam_node.hpp"
 
-namespace lio_sam_shaw {
+namespace lio_slam_shaw {
 
 SlamNode::SlamNode(const rclcpp::NodeOptions& options) : Node("slam_node", options) {
     RCLCPP_INFO(this->get_logger(), "Initializing LIO-SAM-SHAW Node...");
@@ -132,4 +132,4 @@ void SlamNode::publishRealtimeOdometry(const core::ImuData& latest_imu) {
     pub_odom_realtime_->publish(odom);
 }
 
-}  // namespace lio_sam_shaw
+}  // namespace lio_slam_shaw

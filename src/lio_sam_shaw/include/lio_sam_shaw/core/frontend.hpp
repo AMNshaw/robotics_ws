@@ -1,18 +1,18 @@
-#ifndef LIO_SAM_SHAW__CORE__FRONTEND_HPP_
-#define LIO_SAM_SHAW__CORE__FRONTEND_HPP_
+#ifndef LIO_SLAM_SHAW__CORE__FRONTEND_HPP_
+#define LIO_SLAM_SHAW__CORE__FRONTEND_HPP_
 
 #include <chrono>
 #include <mutex>
 
-#include "lio_sam_shaw/core/i_feature_extractor.hpp"
-#include "lio_sam_shaw/core/i_imu_preintegrator.hpp"
-#include "lio_sam_shaw/core/i_scan_matcher.hpp"
-#include "lio_sam_shaw/core/i_scan_preprocessor.hpp"
-#include "lio_sam_shaw/core/lidar_frame.hpp"
-#include "lio_sam_shaw/core/sensor_data_manager.hpp"
-#include "lio_sam_shaw/core/sensor_data_types.hpp"
+#include "lio_slam_shaw/core/i_feature_extractor.hpp"
+#include "lio_slam_shaw/core/i_imu_preintegrator.hpp"
+#include "lio_slam_shaw/core/i_scan_matcher.hpp"
+#include "lio_slam_shaw/core/i_scan_preprocessor.hpp"
+#include "lio_slam_shaw/core/lidar_frame.hpp"
+#include "lio_slam_shaw/core/sensor_data_manager.hpp"
+#include "lio_slam_shaw/core/sensor_data_types.hpp"
 
-namespace lio_sam_shaw::core {
+namespace lio_slam_shaw::core {
 
 class FrontEnd {
 public:
@@ -61,5 +61,5 @@ private:
     Eigen::Isometry3d correction_ = Eigen::Isometry3d::Identity();
     bool correction_pending_ = false;
 };
-}  // namespace lio_sam_shaw::core
-#endif  // LIO_SAM_SHAW__CORE__FRONTEND_HPP_
+}  // namespace lio_slam_shaw::core
+#endif  // LIO_SLAM_SHAW__CORE__FRONTEND_HPP_

@@ -1,6 +1,6 @@
-#include "lio_sam_shaw/core/backend.hpp"
+#include "lio_slam_shaw/core/backend.hpp"
 
-namespace lio_sam_shaw::core {
+namespace lio_slam_shaw::core {
 
 BackEnd::BackEnd(IMapBuilder::SharedPtr map_builder, IMapOptimizer::SharedPtr map_optimizer,
                  ILoopClosureDetector::SharedPtr loop_closure_detector)
@@ -10,8 +10,8 @@ BackEnd::BackEnd(IMapBuilder::SharedPtr map_builder, IMapOptimizer::SharedPtr ma
 
 std::optional<std::pair<Eigen::Isometry3d, Eigen::Isometry3d>> BackEnd::processFrame(
     const LidarFrame::SharedPtr& frame) {
-    // 1. 由 MapBuilder 判斷是否為 keyframe，不是則直接跳過
-    auto keyframe_opt = map_builder_->addKeyframe(frame);
+    // 1. 每幀都送入 MapBuilder：ikd-Tree 插入 + 判斷是否為 keyframe
+    auto keyframe_opt = map_builder_->addFrame(frame);
     if (!keyframe_opt.has_value()) return std::nullopt;
     const auto& keyframe = keyframe_opt.value();
 
@@ -34,4 +34,4 @@ std::optional<std::pair<Eigen::Isometry3d, Eigen::Isometry3d>> BackEnd::processF
     return std::nullopt;
 }
 
-}  // namespace lio_sam_shaw::core
+}  // namespace lio_slam_shaw::core

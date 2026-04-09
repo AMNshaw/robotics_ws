@@ -6,9 +6,9 @@
 #include <memory>
 #include <vector>
 
-#include "lio_sam_shaw/core/sensor_data.hpp"
+#include "lio_slam_shaw/core/sensor_data.hpp"
 
-namespace lio_sam_shaw::core {
+namespace lio_slam_shaw::core {
 
 /**
  * @brief LidarFrame 是系統中傳遞的核心資料單元
@@ -53,4 +53,4 @@ struct LidarFrame {
     }
 };
 
-}  // namespace lio_sam_shaw::core
+}  // namespace lio_slam_shaw::core

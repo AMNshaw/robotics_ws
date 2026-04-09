@@ -1,5 +1,5 @@
-#ifndef LIO_SAM_SHAW__CORE__SENSOR_DATA_MANAGER_HPP_
-#define LIO_SAM_SHAW__CORE__SENSOR_DATA_MANAGER_HPP_
+#ifndef LIO_SLAM_SHAW__CORE__SENSOR_DATA_MANAGER_HPP_
+#define LIO_SLAM_SHAW__CORE__SENSOR_DATA_MANAGER_HPP_
 
 #include <deque>
 #include <memory>
@@ -7,9 +7,9 @@
 #include <optional>
 #include <vector>
 
-#include "lio_sam_shaw/core/sensor_data_types.hpp"
+#include "lio_slam_shaw/core/sensor_data_types.hpp"
 
-namespace lio_sam_shaw::core {
+namespace lio_slam_shaw::core {
 
 class SensorDataManager {
 public:
@@ -32,11 +32,15 @@ private:
     std::deque<ImuData> imu_queue_;
     std::deque<LidarData> lidar_queue_;  // LidarData 封裝了點雲與起訖時間
 
+    // 上一筆進入 queue 的時間戳，用於 monotonic 過濾
+    Timestamp last_imu_time_{};
+    Timestamp last_lidar_time_{};
+
     // 執行緒鎖
     mutable std::mutex imu_mutex_;
     mutable std::mutex lidar_mutex_;
 };
 
-}  // namespace lio_sam_shaw::core
+}  // namespace lio_slam_shaw::core
 
-#endif  // LIO_SAM_SHAW__CORE__SENSOR_DATA_MANAGER_HPP_
+#endif  // LIO_SLAM_SHAW__CORE__SENSOR_DATA_MANAGER_HPP_

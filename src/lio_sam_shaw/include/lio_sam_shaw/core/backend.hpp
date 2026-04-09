@@ -1,15 +1,15 @@
-#ifndef LIO_SAM_SHAW__CORE__BACKEND_HPP_
-#define LIO_SAM_SHAW__CORE__BACKEND_HPP_
+#ifndef LIO_SLAM_SHAW__CORE__BACKEND_HPP_
+#define LIO_SLAM_SHAW__CORE__BACKEND_HPP_
 
 #include <optional>
 #include <utility>
 
-#include "lio_sam_shaw/core/i_loop_closure_detector.hpp"
-#include "lio_sam_shaw/core/i_map_builder.hpp"
-#include "lio_sam_shaw/core/i_map_optimizer.hpp"
-#include "lio_sam_shaw/core/lidar_frame.hpp"
+#include "lio_slam_shaw/core/i_loop_closure_detector.hpp"
+#include "lio_slam_shaw/core/i_map_builder.hpp"
+#include "lio_slam_shaw/core/i_map_optimizer.hpp"
+#include "lio_slam_shaw/core/lidar_frame.hpp"
 
-namespace lio_sam_shaw::core {
+namespace lio_slam_shaw::core {
 
 class BackEnd {
 public:
@@ -31,5 +31,5 @@ private:
     ILoopClosureDetector::SharedPtr loop_closure_detector_;
 };
 
-}  // namespace lio_sam_shaw::core
-#endif  // LIO_SAM_SHAW__CORE__BACKEND_HPP_
+}  // namespace lio_slam_shaw::core
+#endif  // LIO_SLAM_SHAW__CORE__BACKEND_HPP_

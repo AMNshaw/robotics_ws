@@ -1,5 +1,5 @@
-#ifndef LIO_SAM_SHAW__CORE__SLAM_PROCESSOR_HPP_
-#define LIO_SAM_SHAW__CORE__SLAM_PROCESSOR_HPP_
+#ifndef LIO_SLAM_SHAW__CORE__SLAM_PROCESSOR_HPP_
+#define LIO_SLAM_SHAW__CORE__SLAM_PROCESSOR_HPP_
 
 #include <atomic>
 #include <condition_variable>
@@ -9,12 +9,12 @@
 #include <queue>
 #include <thread>
 
-#include "lio_sam_shaw/core/backend.hpp"
-#include "lio_sam_shaw/core/frontend.hpp"
-#include "lio_sam_shaw/core/sensor_data_manager.hpp"
-#include "lio_sam_shaw/core/sensor_data_types.hpp"
+#include "lio_slam_shaw/core/backend.hpp"
+#include "lio_slam_shaw/core/frontend.hpp"
+#include "lio_slam_shaw/core/sensor_data_manager.hpp"
+#include "lio_slam_shaw/core/sensor_data_types.hpp"
 
-namespace lio_sam_shaw::core {
+namespace lio_slam_shaw::core {
 
 class SlamProcessor {
 public:
@@ -48,6 +48,6 @@ private:
     std::queue<LidarFrame::SharedPtr> frame_queue_;
 };
 
-}  // namespace lio_sam_shaw::core
+}  // namespace lio_slam_shaw::core
 
-#endif  // LIO_SAM_SHAW__CORE__SLAM_PROCESSOR_HPP_
+#endif  // LIO_SLAM_SHAW__CORE__SLAM_PROCESSOR_HPP_
