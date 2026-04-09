@@ -42,7 +42,8 @@ public:
 
     void integrateImusAndPredict(const std::vector<core::ImuData>& imus) override;
     void updateBiasAndRepropagateImus(
-        const core::NavState& optimized_state, const std::vector<core::ImuData>& opt_imu_segment,
+        const core::ScanMatchResult& scan_match_result,
+        const std::vector<core::ImuData>& opt_imu_segment,
         const std::vector<core::ImuData>& reprop_imu_segment) override;
     core::NavState getLatestNavState() const override;
     std::optional<core::NavState> queryNavState(const core::Timestamp& t) const override;
@@ -54,7 +55,7 @@ private:
     void resetOptimization();
     void marginalizeOldFactors();
     bool calculateImuBias(const gtsam::Pose3& current_pose,
-                          const Eigen::Matrix<double, 6, 6>& pose_cov,
+                          gtsam::noiseModel::Diagonal::shared_ptr pose_cov,
                           const std::vector<core::ImuData>& opt_imu_segment);
     bool failureDetection(const gtsam::Vector3& velCur,
                           const gtsam::imuBias::ConstantBias& biasCur);

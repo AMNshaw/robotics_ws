@@ -18,7 +18,7 @@ public:
     virtual void integrateImusAndPredict(const std::vector<core::ImuData>& imus) = 0;
 
     virtual void updateBiasAndRepropagateImus(
-        const core::NavState& optimized_state, const std::vector<core::ImuData>& opt_imu_segment,
+        const ScanMatchResult& scan_match_result, const std::vector<core::ImuData>& opt_imu_segment,
         const std::vector<core::ImuData>& reprop_imu_segment) = 0;
 
     virtual NavState getLatestNavState() const = 0;

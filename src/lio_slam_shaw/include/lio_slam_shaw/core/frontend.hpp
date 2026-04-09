@@ -31,19 +31,14 @@ public:
     void feed_lidar(const LidarData& lidar);
     void feed_imu(const ImuData& imu);
 
-    // 回傳經全局修正後的最新狀態
     NavState getLatestNavState() const;
     bool SensorDataSynced();
 
     std::optional<LidarFrame::SharedPtr> processPipeline();
-
-    // 後端 loop closure 完成後呼叫
-    // original_pose: 該 keyframe 當初 scan match 的位姿 (LidarFrame::matched_result.pose)
-    // corrected_pose: map optimizer 優化後的全局位姿
-    void updateGlobalPose(const Eigen::Isometry3d& original_pose,
-                          const Eigen::Isometry3d& corrected_pose);
+    void updateMapReferenceShift(const Eigen::Isometry3d& shift_matrix);
 
 private:
+    mutable std::mutex pipeline_mtx_;
     SensorDataManager::SharedPtr data_manager_;
     IScanPreprocessor::SharedPtr scan_preprocessor_;
     IFeatureExtractor::SharedPtr feature_extractor_;
@@ -57,8 +52,8 @@ private:
     // correction_ = corrected_pose * original_pose.inverse()
     // correction_pending_ = true 時，下一幀 pipeline 會將 matched_result
     // 直接傳給 preintegrator 重新 anchor，之後 correction_ 歸 Identity
-    mutable std::mutex correction_mtx_;
-    Eigen::Isometry3d correction_ = Eigen::Isometry3d::Identity();
+
+    Eigen::Isometry3d map_reference_shift_transform_ = Eigen::Isometry3d::Identity();
     bool correction_pending_ = false;
 };
 }  // namespace lio_slam_shaw::core

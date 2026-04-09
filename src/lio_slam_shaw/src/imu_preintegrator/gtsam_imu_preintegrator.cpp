@@ -88,11 +88,12 @@ void GtsamImuPreintegrator::integrateImusAndPredictNoLock(const std::vector<core
 }
 
 void GtsamImuPreintegrator::updateBiasAndRepropagateImus(
-    const core::NavState& optimized_state, const std::vector<core::ImuData>& opt_imu_segment,
+    const core::ScanMatchResult& scan_match_result,
+    const std::vector<core::ImuData>& opt_imu_segment,
     const std::vector<core::ImuData>& reprop_imu_segment) {
     std::lock_guard<std::mutex> lock(mtx_);
 
-    const gtsam::Pose3 current_pose = toGtsamPose(optimized_state.pose);
+    const gtsam::Pose3 current_pose = toGtsamPose(scan_match_result.pose);
     const gtsam::Pose3 imu_pose = current_pose.compose(T_base_imu_);
 
     if (state_ == PreintegratorState::WAITING_FOR_FIRST_FRAME) {
@@ -107,7 +108,10 @@ void GtsamImuPreintegrator::updateBiasAndRepropagateImus(
         graph_node_index_ = 1;
     }
 
-    if (!calculateImuBias(imu_pose, optimized_state.pose_cov, opt_imu_segment)) {
+    if (!calculateImuBias(
+            imu_pose,
+            (scan_match_result.is_degenerate ? correction_noise_large_ : correction_noise_),
+            opt_imu_segment)) {
         state_ = PreintegratorState::WAITING_FOR_FIRST_FRAME;
         return;
     }
@@ -145,10 +149,10 @@ std::optional<core::NavState> GtsamImuPreintegrator::queryNavState(const core::T
     const auto& s1 = *it;
     const auto& s0 = *(it - 1);
 
-    double total = getDeltaSec(s0.timestamp, s1.timestamp);
+    double total = core::getDeltaSec(s0.timestamp, s1.timestamp);
     if (total < 1e-9) return s0;
 
-    double alpha = std::clamp(getDeltaSec(s0.timestamp, t) / total, 0.0, 1.0);
+    double alpha = std::clamp(core::getDeltaSec(s0.timestamp, t) / total, 0.0, 1.0);
 
     // 旋轉 slerp，位置 & 速度線性插值
     Eigen::Quaterniond q0(s0.pose.linear());
@@ -230,7 +234,7 @@ void GtsamImuPreintegrator::marginalizeOldFactors() {
 }
 
 bool GtsamImuPreintegrator::calculateImuBias(const gtsam::Pose3& imu_pose,
-                                             const Eigen::Matrix<double, 6, 6>& pose_cov,
+                                             gtsam::noiseModel::Diagonal::shared_ptr pose_cov,
                                              const std::vector<core::ImuData>& opt_imu_segment) {
     for (size_t i = 1; i < opt_imu_segment.size(); ++i) {
         const auto& curr_imu = opt_imu_segment[i];
@@ -260,10 +264,7 @@ bool GtsamImuPreintegrator::calculateImuBias(const gtsam::Pose3& imu_pose,
         gtsam::noiseModel::Diagonal::Sigmas(sqrt(imu_integrator_opt_->deltaTij()) *
                                             noise_model_between_bias_)));
 
-    bool is_degenerate = pose_cov.trace() > 1.0;
-    factor_graph_.add(gtsam::PriorFactor<gtsam::Pose3>(
-        X(graph_node_index_), imu_pose,
-        is_degenerate ? correction_noise_large_ : correction_noise_));
+    factor_graph_.add(gtsam::PriorFactor<gtsam::Pose3>(X(graph_node_index_), imu_pose, pose_cov));
 
     gtsam::NavState prop_state =
         imu_integrator_opt_->predict(last_optimized_state_, last_optimized_bias_);

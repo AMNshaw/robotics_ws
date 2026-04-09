@@ -29,36 +29,24 @@ void FrontEnd::feed_imu(const ImuData& imu) {
 }
 
 NavState FrontEnd::getLatestNavState() const {
-    auto state = imu_preintegrator_->getLatestNavState();
-    std::lock_guard<std::mutex> lock(correction_mtx_);
-    state.pose = correction_ * state.pose;
-    return state;
+    std::lock_guard<std::mutex> lock(pipeline_mtx_);
+    return imu_preintegrator_->getLatestNavState();
 }
 
-void FrontEnd::updateGlobalPose(const Eigen::Isometry3d& original_pose,
-                                const Eigen::Isometry3d& corrected_pose) {
-    std::lock_guard<std::mutex> lock(correction_mtx_);
-    correction_ = corrected_pose * original_pose.inverse();
-    correction_pending_ = true;
+void FrontEnd::updateMapReferenceShift(const Eigen::Isometry3d& shift_matrix) {
+    std::lock_guard<std::mutex> lock(pipeline_mtx_);
+    map_reference_shift_transform_ = shift_matrix;
 }
 
 bool FrontEnd::SensorDataSynced() { return data_manager_->hasSyncedData(); }
 
 std::optional<LidarFrame::SharedPtr> FrontEnd::processPipeline() {
+    std::lock_guard<std::mutex> lock(pipeline_mtx_);
+
     LidarData lidar;
     std::vector<ImuData> opt_imu_batch;
-
     if (!data_manager_->getSyncedData(lidar, opt_imu_batch)) {
         return std::nullopt;
-    }
-
-    // 整個 pipeline 使用同一份 snapshot，避免後端非同步修改造成不一致
-    Eigen::Isometry3d correction_snapshot;
-    bool pending;
-    {
-        std::lock_guard<std::mutex> lock(correction_mtx_);
-        correction_snapshot = correction_;
-        pending = correction_pending_;
     }
 
     auto processed_cloud = scan_preprocessor_->processCloud(opt_imu_batch, lidar);
@@ -66,22 +54,19 @@ std::optional<LidarFrame::SharedPtr> FrontEnd::processPipeline() {
 
     auto raw_state = imu_preintegrator_->getLatestNavState();
     auto corrected_state = raw_state;
-    corrected_state.pose = correction_snapshot * raw_state.pose;
-    auto matched_result = scan_matcher_->match(features, corrected_state);
+    corrected_state.pose = map_reference_shift_transform_ * raw_state.pose;
+    auto matched_result_in_map_ref = scan_matcher_->match(features, corrected_state);
+    auto matched_result_in_local = matched_result_in_map_ref;
+    matched_result_in_local.pose =
+        map_reference_shift_transform_.inverse() * matched_result_in_map_ref.pose;
 
     std::vector<ImuData> reprop_imu_batch;
     data_manager_->getBatchImuData(lidar.timestamp, last_processed_imu_time_, reprop_imu_batch);
-    imu_preintegrator_->updateBiasAndRepropagateImus(matched_result, opt_imu_batch,
+    imu_preintegrator_->updateBiasAndRepropagateImus(matched_result_in_local, opt_imu_batch,
                                                      reprop_imu_batch);
 
-    if (pending) {
-        std::lock_guard<std::mutex> lock(correction_mtx_);
-        correction_ = Eigen::Isometry3d::Identity();
-        correction_pending_ = false;
-    }
-
     return LidarFrame::make_frame(frame_id_counter_++, lidar.timestamp, lidar.cloud,
-                                  processed_cloud.cloud, features, matched_result);
+                                  processed_cloud.cloud, features, matched_result_in_map_ref);
 }
 
 }  // namespace lio_slam_shaw::core
