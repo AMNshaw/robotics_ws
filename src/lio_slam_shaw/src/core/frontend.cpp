@@ -64,16 +64,11 @@ std::optional<LidarFrame::SharedPtr> FrontEnd::processPipeline() {
     auto processed_cloud = scan_preprocessor_->processCloud(opt_imu_batch, lidar);
     auto features = feature_extractor_->extract(processed_cloud);
 
-    // scan matcher 用 corrected frame 作為初始猜測
     auto raw_state = imu_preintegrator_->getLatestNavState();
     auto corrected_state = raw_state;
     corrected_state.pose = correction_snapshot * raw_state.pose;
     auto matched_result = scan_matcher_->match(features, corrected_state);
 
-    // 直接傳入 preintegrator：
-    // - 正常情況: correction_ = Identity → matched_result 即為 raw frame，無需轉換
-    // - pending 情況: matched_result 在 corrected frame，當作新 anchor 傳入
-    //   GTSAM graph 以此重建基點，之後 correction_ 歸 Identity
     std::vector<ImuData> reprop_imu_batch;
     data_manager_->getBatchImuData(lidar.timestamp, last_processed_imu_time_, reprop_imu_batch);
     imu_preintegrator_->updateBiasAndRepropagateImus(matched_result, opt_imu_batch,

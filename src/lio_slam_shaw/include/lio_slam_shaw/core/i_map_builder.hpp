@@ -47,6 +47,8 @@ public:
                                                                int k = 5) const = 0;
 
     // 後端全局優化完後，批次更新所有歷史 keyframe 的 pose
+    // 實作需同時：(1) 更新 keyframe->pose；(2) 清空並重建 ikd-Tree（world frame 座標全部過時）
+    // KeyFrame::cloud 是 body frame，不需要修改
     virtual void updateKeyframePoses(
         const std::vector<std::pair<uint64_t, Eigen::Isometry3d>>& id_pose_pairs) = 0;
 

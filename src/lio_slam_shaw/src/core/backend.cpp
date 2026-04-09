@@ -15,13 +15,14 @@ std::optional<std::pair<Eigen::Isometry3d, Eigen::Isometry3d>> BackEnd::processF
     if (!keyframe_opt.has_value()) return std::nullopt;
     const auto& keyframe = keyframe_opt.value();
 
-    // 2. 加入 odometry edge，優化當前 keyframe pose
+    // 2. 加入 odometry edge（iSAM2 incremental update）
     map_optimizer_->addKeyframe(keyframe->id, frame->matched_result);
 
-    // 3. 偵測 loop closure，若有則加入約束並全局優化
-    auto loop_opt = loop_closure_detector_->detect(keyframe, *map_builder_);
+    // 3. 偵測 loop closure，若有則加入約束、觸發全局優化、更新地圖
+    auto loop_opt = loop_closure_detector_->detect(keyframe, map_builder_);
     if (loop_opt.has_value()) {
-        auto corrected_poses = map_optimizer_->addLoopConstraint(loop_opt.value());
+        map_optimizer_->addLoopConstraint(loop_opt.value());
+        auto corrected_poses = map_optimizer_->optimize();
         map_builder_->updateKeyframePoses(corrected_poses);
 
         // 找出當前 keyframe 修正後的 pose，回傳給 SlamProcessor 通知前端

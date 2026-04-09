@@ -31,7 +31,7 @@ public:
     // 以當前 keyframe 對歷史地圖偵測 loop closure
     // 若找到，回傳 LoopConstraint；未找到回傳 nullopt
     virtual std::optional<LoopConstraint> detect(const KeyFrame::SharedPtr& current_keyframe,
-                                                 const IMapBuilder& map_builder) = 0;
+                                                 core::IMapBuilder::SharedPtr map_builder) = 0;
 };
 
 }  // namespace lio_slam_shaw::core

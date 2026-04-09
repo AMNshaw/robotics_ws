@@ -11,6 +11,19 @@
 
 namespace lio_slam_shaw::scan_matcher {
 
+struct IkdTreeScanMatcherParams {
+    // 每個 query 點查詢的最近鄰數量（用於擬合局部平面）
+    int k_neighbors = 5;
+    // GN 最大迭代次數
+    int max_iterations = 30;
+    // δx 的 L2 norm 低於此值則宣告收斂
+    double convergence_threshold = 1e-5;
+    // 一次迭代中最少有效點對數，低於此值視為退化
+    int min_valid_points = 50;
+    // Hessian 最大/最小特徵值比值超過此值則視為退化環境
+    double degenerate_threshold = 100.0;
+};
+
 // GN/LM point-to-plane scan matcher，使用 IMapBuilder 提供的 ikd-Tree 查詢最近鄰
 // 數學上等同於 FAST-LIO 的 iEKF，但用 Gauss-Newton 迭代求解 6-DoF 位姿
 //
@@ -27,14 +40,8 @@ class IkdTreeScanMatcher : public core::IScanMatcher {
 public:
     using SharedPtr = std::shared_ptr<IkdTreeScanMatcher>;
 
-    // map_builder: 持有 ikd-Tree，每幀都應已透過 addFrame() 完成插入
-    // k_neighbors: 每個 query 點查詢的最近鄰數量（用於擬合局部平面）
-    // max_iterations: GN 最大迭代次數
-    // convergence_threshold: δx 的 L2 norm 低於此值則宣告收斂
-    // min_valid_points: 一次迭代中最少有效點對數，低於此值視為退化
-    explicit IkdTreeScanMatcher(core::IMapBuilder::SharedPtr map_builder, int k_neighbors = 5,
-                                int max_iterations = 30, double convergence_threshold = 1e-5,
-                                int min_valid_points = 50);
+    explicit IkdTreeScanMatcher(core::IMapBuilder::SharedPtr map_builder,
+                                const IkdTreeScanMatcherParams& params = {});
 
     // 以 initial_guess.pose 為初始狀態，對 features.raw_deskewed 進行 GN 迭代匹配
     // 回傳 ScanMatchResult，其中 pose 為地圖座標系下的最終位姿
@@ -52,14 +59,10 @@ private:
                                                          int n_valid_points);
 
     // 利用 Hessian 最小特徵值比值判斷是否退化（例如長廊、空曠環境）
-    static bool checkDegenerate(const Eigen::Matrix<double, 6, 6>& H,
-                                double degenerate_threshold = 100.0);
+    static bool checkDegenerate(const Eigen::Matrix<double, 6, 6>& H, double degenerate_threshold);
 
     core::IMapBuilder::SharedPtr map_builder_;
-    int k_neighbors_;
-    int max_iterations_;
-    double convergence_threshold_;
-    int min_valid_points_;
+    IkdTreeScanMatcherParams params_;
 };
 
 }  // namespace lio_slam_shaw::scan_matcher

@@ -5,14 +5,9 @@
 
 namespace lio_slam_shaw::scan_matcher {
 
-IkdTreeScanMatcher::IkdTreeScanMatcher(core::IMapBuilder::SharedPtr map_builder, int k_neighbors,
-                                       int max_iterations, double convergence_threshold,
-                                       int min_valid_points)
-    : map_builder_(std::move(map_builder)),
-      k_neighbors_(k_neighbors),
-      max_iterations_(max_iterations),
-      convergence_threshold_(convergence_threshold),
-      min_valid_points_(min_valid_points) {}
+IkdTreeScanMatcher::IkdTreeScanMatcher(core::IMapBuilder::SharedPtr map_builder,
+                                       const IkdTreeScanMatcherParams& params)
+    : map_builder_(std::move(map_builder)), params_(params) {}
 
 core::ScanMatchResult IkdTreeScanMatcher::match(const core::FeatureSet& features,
                                                 const core::NavState& initial_guess) {
@@ -27,9 +22,9 @@ core::ScanMatchResult IkdTreeScanMatcher::match(const core::FeatureSet& features
     Eigen::Matrix<double, 6, 6> H_final = Eigen::Matrix<double, 6, 6>::Zero();
     int n_valid_final = 0;
 
-    for (int iter = 0; iter < max_iterations_; ++iter) {
+    for (int iter = 0; iter < params_.max_iterations; ++iter) {
         // 1. 以當前位姿估計查詢 k 個最近鄰，並取得擬合平面
-        auto nn_results = map_builder_->queryNearestPoints(cloud, result.pose, k_neighbors_);
+        auto nn_results = map_builder_->queryNearestPoints(cloud, result.pose, params_.k_neighbors);
 
         Eigen::Matrix<double, 6, 6> H = Eigen::Matrix<double, 6, 6>::Zero();
         Eigen::Matrix<double, 6, 1> b = Eigen::Matrix<double, 6, 1>::Zero();
@@ -52,7 +47,7 @@ core::ScanMatchResult IkdTreeScanMatcher::match(const core::FeatureSet& features
             ++n_valid;
         }
 
-        if (n_valid < min_valid_points_) {
+        if (n_valid < params_.min_valid_points) {
             // 有效點對不足，提前終止（退化或地圖空）
             result.is_degenerate = true;
             break;
@@ -68,14 +63,14 @@ core::ScanMatchResult IkdTreeScanMatcher::match(const core::FeatureSet& features
         n_valid_final = n_valid;
 
         // 4. 收斂判斷
-        if (dx.norm() < convergence_threshold_) {
+        if (dx.norm() < params_.convergence_threshold) {
             result.is_converged = true;
             break;
         }
     }
 
     if (n_valid_final > 0) {
-        result.is_degenerate = checkDegenerate(H_final);
+        result.is_degenerate = checkDegenerate(H_final, params_.degenerate_threshold);
         result.covariance = computeCovariance(H_final, n_valid_final);
         // fitness_score: 最後一次迭代的平均點到面殘差（平方）
         // 由呼叫者透過 queryNearestPoints 自行評估，此處設為 0
