@@ -1,12 +1,15 @@
 #include "lio_slam_shaw/lidar_preprocessor/imu_deskew_preprocessor.hpp"
 
 #include <omp.h>
+#include <pcl/filters/voxel_grid.h>
 
 #include <algorithm>
 #include <optional>
 
 namespace lio_slam_shaw::lidar_preprocessor {
 
+ImuDeskewPreprocessor::ImuDeskewPreprocessor(const ImuDeskewPreprocessorParams& params)
+    : params_(params) {}
 namespace {
 
 // 從已排序的 NavState snapshot 中插値指定時刻的狀態（無鎖）
@@ -86,6 +89,18 @@ core::LidarData ImuDeskewPreprocessor::processCloud(const std::vector<core::NavS
 
     core::LidarData result = raw_cloud;
     result.cloud = deskewed;
+
+    // VoxelGrid downsample（deskew 完後在 body frame 做）
+    if (params_.voxel_leaf_size > 0.0f) {
+        pcl::VoxelGrid<core::PointXYZIRT> voxel;
+        voxel.setLeafSize(params_.voxel_leaf_size, params_.voxel_leaf_size,
+                          params_.voxel_leaf_size);
+        voxel.setInputCloud(result.cloud);
+        auto filtered = std::make_shared<core::PointCloudIRT>();
+        voxel.filter(*filtered);
+        result.cloud = filtered;
+    }
+
     return result;
 }
 

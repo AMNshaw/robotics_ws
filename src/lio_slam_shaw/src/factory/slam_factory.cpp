@@ -5,26 +5,13 @@
 #include "lio_slam_shaw/core/sensor_data_manager.hpp"
 #include "lio_slam_shaw/factory/feature_extractor_factory.hpp"
 #include "lio_slam_shaw/factory/imu_preintegrator_factory.hpp"
+#include "lio_slam_shaw/factory/loop_closure_detector_factory.hpp"
 #include "lio_slam_shaw/factory/map_builder_factory.hpp"
 #include "lio_slam_shaw/factory/map_optimizer_factory.hpp"
 #include "lio_slam_shaw/factory/scan_matcher_factory.hpp"
 #include "lio_slam_shaw/factory/scan_preprocessor_factory.hpp"
 
 namespace lio_slam_shaw::factory {
-
-namespace {
-
-// ── 暫時 stub：ILoopClosureDetector ────────────────────────────────────────
-// TODO: 替換為 concrete IcpLoopClosureDetector 實作
-class StubLoopClosureDetector : public core::ILoopClosureDetector {
-public:
-    std::optional<core::LoopConstraint> detect(const core::KeyFrame::SharedPtr&,
-                                               core::IMapBuilder::SharedPtr) override {
-        return std::nullopt;
-    }
-};
-
-}  // namespace
 
 core::SlamProcessor::SharedPtr SlamFactory::create(rclcpp::Node::SharedPtr node) {
     // 1. IMU preintegrator（所有需要 IMU 狀態的元件都依賴它）
@@ -50,9 +37,8 @@ core::SlamProcessor::SharedPtr SlamFactory::create(rclcpp::Node::SharedPtr node)
         sensor_data_manager, scan_preprocessor, feature_extractor, scan_matcher, imu_preintegrator);
 
     // 8. Map optimizer & loop closure detector
-    // TODO: 替換為 IcpLoopClosureDetector
     auto map_optimizer = MapOptimizerFactory::create(node);
-    auto loop_closure_detector = std::make_shared<StubLoopClosureDetector>();
+    auto loop_closure_detector = LoopClosureDetectorFactory::create(node, scan_matcher);
 
     // 9. BackEnd
     auto backend =

@@ -8,7 +8,7 @@ core::IScanPreprocessor::SharedPtr ScanPreprocessorFactory::create(rclcpp::Node:
     std::string type = node->declare_parameter<std::string>("scan_preprocessor_type", "deskew");
 
     if (type == "deskew") {
-        return createDeskew();
+        return createDeskew(node);
     }
     RCLCPP_WARN(node->get_logger(),
                 "Unknown scan_preprocessor_type '%s', falling back to passthrough.", type.c_str());
@@ -26,8 +26,12 @@ core::IScanPreprocessor::SharedPtr ScanPreprocessorFactory::createDefault() {
     return std::make_shared<PassthroughPreprocessor>();
 }
 
-core::IScanPreprocessor::SharedPtr ScanPreprocessorFactory::createDeskew() {
-    return std::make_shared<lidar_preprocessor::ImuDeskewPreprocessor>();
+core::IScanPreprocessor::SharedPtr ScanPreprocessorFactory::createDeskew(
+    rclcpp::Node::SharedPtr node) {
+    lidar_preprocessor::ImuDeskewPreprocessorParams params;
+    params.voxel_leaf_size = static_cast<float>(
+        node->declare_parameter<double>("scan_preprocessor.voxel_leaf_size", 0.2));
+    return std::make_shared<lidar_preprocessor::ImuDeskewPreprocessor>(params);
 }
 
 }  // namespace lio_slam_shaw::factory

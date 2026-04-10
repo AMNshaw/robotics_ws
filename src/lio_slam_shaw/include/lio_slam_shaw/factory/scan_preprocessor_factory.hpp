@@ -13,12 +13,8 @@ public:
 
 private:
     static core::IScanPreprocessor::SharedPtr createDefault();
-    static core::IScanPreprocessor::SharedPtr createDeskew();
+    static core::IScanPreprocessor::SharedPtr createDeskew(rclcpp::Node::SharedPtr node);
 };
-
-}  // namespace lio_slam_shaw::factory
-
-#endif  // LIO_SLAM_SHAW__FACTORY__SCAN_PREPROCESSOR_FACTORY_HPP_
 
 }  // namespace lio_slam_shaw::factory
 
