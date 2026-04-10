@@ -76,9 +76,12 @@ void GtsamImuPreintegrator::integrateImusAndPredictNoLock(const std::vector<core
         integrated = true;
 
         // 將當前預測狀態存入 queue，供 deskew 插值使用
+        // predict 結果在 IMU frame，compose(T_imu_base_) 轉回 base frame
         const auto gtsam_mid =
             imu_integrator_predict_->predict(last_optimized_state_, last_optimized_bias_);
-        nav_state_queue_.push_back(fromGtsamNavState(gtsam_mid, imu.timestamp));
+        const gtsam::Pose3 base_pose = gtsam_mid.pose().compose(T_imu_base_);
+        nav_state_queue_.push_back(
+            fromGtsamNavState(gtsam::NavState(base_pose, gtsam_mid.velocity()), imu.timestamp));
 
         last_imu_ = imu;
     }
@@ -176,29 +179,22 @@ std::optional<core::NavState> GtsamImuPreintegrator::queryNavState(const core::T
 }
 
 void GtsamImuPreintegrator::initFirstFrame(const gtsam::Pose3& imu_pose) {
-    gtsam::ISAM2Params opt_params;
-    opt_params.relinearizeThreshold = 0.1;
-    opt_params.relinearizeSkip = 1;
-    optimizer_ = std::make_unique<gtsam::ISAM2>(opt_params);
-
+    // optimizer_ is already reset by the caller (resetOptimization)
     gtsam::noiseModel::Diagonal::shared_ptr prior_vel_noise =
         gtsam::noiseModel::Isotropic::Sigma(3, 1e4);
     gtsam::noiseModel::Diagonal::shared_ptr prior_bias_noise =
         gtsam::noiseModel::Isotropic::Sigma(6, 1e-3);
 
-    factor_graph_.add(gtsam::PriorFactor<gtsam::Pose3>(X(0), imu_pose, correction_noise_));
-    factor_graph_.add(
-        gtsam::PriorFactor<gtsam::Vector3>(V(0), gtsam::Vector3(0, 0, 0), prior_vel_noise));
-    factor_graph_.add(gtsam::PriorFactor<gtsam::imuBias::ConstantBias>(
-        B(0), gtsam::imuBias::ConstantBias(), prior_bias_noise));
-
-    initial_graph_values_.insert(X(0), imu_pose);
-    initial_graph_values_.insert(V(0), gtsam::Vector3(0, 0, 0));
-    initial_graph_values_.insert(B(0), gtsam::imuBias::ConstantBias());
-
-    optimizer_->update(factor_graph_, initial_graph_values_);
-    factor_graph_.resize(0);
-    initial_graph_values_.clear();
+    gtsam::NonlinearFactorGraph graph;
+    gtsam::Values values;
+    graph.add(gtsam::PriorFactor<gtsam::Pose3>(X(0), imu_pose, correction_noise_));
+    graph.add(gtsam::PriorFactor<gtsam::Vector3>(V(0), gtsam::Vector3(0, 0, 0), prior_vel_noise));
+    graph.add(gtsam::PriorFactor<gtsam::imuBias::ConstantBias>(B(0), gtsam::imuBias::ConstantBias(),
+                                                               prior_bias_noise));
+    values.insert(X(0), imu_pose);
+    values.insert(V(0), gtsam::Vector3(0, 0, 0));
+    values.insert(B(0), gtsam::imuBias::ConstantBias());
+    optimizer_->update(graph, values);
 
     last_optimized_state_ = gtsam::NavState(imu_pose, gtsam::Vector3(0, 0, 0));
     last_optimized_bias_ = gtsam::imuBias::ConstantBias();
@@ -224,18 +220,15 @@ void GtsamImuPreintegrator::marginalizeOldFactors() {
     const auto& init_bias = last_optimized_bias_;
 
     resetOptimization();
-    gtsam::PriorFactor<gtsam::Pose3> priorPose(X(0), init_pose, updatedPoseNoise);
-    factor_graph_.add(priorPose);
-    gtsam::PriorFactor<gtsam::Vector3> priorVel(V(0), init_vel, updatedVelNoise);
-    factor_graph_.add(priorVel);
-    gtsam::PriorFactor<gtsam::imuBias::ConstantBias> priorBias(B(0), init_bias, updatedBiasNoise);
-    factor_graph_.add(priorBias);
-    initial_graph_values_.insert(X(0), init_pose);
-    initial_graph_values_.insert(V(0), init_vel);
-    initial_graph_values_.insert(B(0), init_bias);
-    optimizer_->update(factor_graph_, initial_graph_values_);
-    factor_graph_.resize(0);
-    initial_graph_values_.clear();
+    gtsam::NonlinearFactorGraph graph;
+    gtsam::Values values;
+    graph.add(gtsam::PriorFactor<gtsam::Pose3>(X(0), init_pose, updatedPoseNoise));
+    graph.add(gtsam::PriorFactor<gtsam::Vector3>(V(0), init_vel, updatedVelNoise));
+    graph.add(gtsam::PriorFactor<gtsam::imuBias::ConstantBias>(B(0), init_bias, updatedBiasNoise));
+    values.insert(X(0), init_pose);
+    values.insert(V(0), init_vel);
+    values.insert(B(0), init_bias);
+    optimizer_->update(graph, values);
 }
 
 bool GtsamImuPreintegrator::calculateImuBias(const gtsam::Pose3& imu_pose,
@@ -256,31 +249,27 @@ bool GtsamImuPreintegrator::calculateImuBias(const gtsam::Pose3& imu_pose,
         imu_integrator_opt_->integrateMeasurement(avg_acc, avg_gyr, dt);
     }
 
-    const gtsam::PreintegratedImuMeasurements& preint_imu = *imu_integrator_opt_;
-    gtsam::ImuFactor imu_factor(X(graph_node_index_ - 1), V(graph_node_index_ - 1),
-                                X(graph_node_index_), V(graph_node_index_),
-                                B(graph_node_index_ - 1), preint_imu);
-    factor_graph_.add(imu_factor);
+    gtsam::NonlinearFactorGraph graph;
+    gtsam::Values values;
 
-    gtsam::noiseModel::Diagonal::shared_ptr bias_noise =
-        gtsam::noiseModel::Isotropic::Sigma(6, 1e-3);
-    factor_graph_.add(gtsam::BetweenFactor<gtsam::imuBias::ConstantBias>(
+    const gtsam::PreintegratedImuMeasurements& preint_imu = *imu_integrator_opt_;
+    graph.add(gtsam::ImuFactor(X(graph_node_index_ - 1), V(graph_node_index_ - 1),
+                               X(graph_node_index_), V(graph_node_index_), B(graph_node_index_ - 1),
+                               preint_imu));
+    graph.add(gtsam::BetweenFactor<gtsam::imuBias::ConstantBias>(
         B(graph_node_index_ - 1), B(graph_node_index_), gtsam::imuBias::ConstantBias(),
         gtsam::noiseModel::Diagonal::Sigmas(sqrt(imu_integrator_opt_->deltaTij()) *
                                             noise_model_between_bias_)));
-
-    factor_graph_.add(gtsam::PriorFactor<gtsam::Pose3>(X(graph_node_index_), imu_pose, pose_cov));
+    graph.add(gtsam::PriorFactor<gtsam::Pose3>(X(graph_node_index_), imu_pose, pose_cov));
 
     gtsam::NavState prop_state =
         imu_integrator_opt_->predict(last_optimized_state_, last_optimized_bias_);
-    initial_graph_values_.insert(X(graph_node_index_), prop_state.pose());
-    initial_graph_values_.insert(V(graph_node_index_), prop_state.velocity());
-    initial_graph_values_.insert(B(graph_node_index_), last_optimized_bias_);
+    values.insert(X(graph_node_index_), prop_state.pose());
+    values.insert(V(graph_node_index_), prop_state.velocity());
+    values.insert(B(graph_node_index_), last_optimized_bias_);
 
-    optimizer_->update(factor_graph_, initial_graph_values_);
+    optimizer_->update(graph, values);
     optimizer_->update();
-    factor_graph_.resize(0);
-    initial_graph_values_.clear();
 
     gtsam::Values result = optimizer_->calculateEstimate();
     last_optimized_state_ = gtsam::NavState(result.at<gtsam::Pose3>(X(graph_node_index_)),
@@ -315,9 +304,6 @@ void GtsamImuPreintegrator::resetOptimization() {
     optParameters.relinearizeThreshold = 0.1;
     optParameters.relinearizeSkip = 1;
     optimizer_ = std::make_unique<gtsam::ISAM2>(optParameters);
-
-    factor_graph_.resize(0);
-    initial_graph_values_.clear();
 }
 
 gtsam::Pose3 GtsamImuPreintegrator::toGtsamPose(const Eigen::Isometry3d& pose) const {
@@ -325,10 +311,8 @@ gtsam::Pose3 GtsamImuPreintegrator::toGtsamPose(const Eigen::Isometry3d& pose) c
 }
 core::NavState GtsamImuPreintegrator::fromGtsamNavState(const gtsam::NavState& g_state,
                                                         const core::Timestamp& timestamp) const {
-    // g_state is in IMU frame (T_w_imu); convert back to base/body frame: T_w_base = T_w_imu *
-    // T_imu_base
-    const gtsam::Pose3 base_pose = g_state.pose().compose(T_imu_base_);
-    return core::NavState{timestamp, Eigen::Isometry3d(base_pose.matrix()), g_state.velocity()};
+    return core::NavState{timestamp, Eigen::Isometry3d(g_state.pose().matrix()),
+                          g_state.velocity()};
 }
 
 }  // namespace lio_slam_shaw

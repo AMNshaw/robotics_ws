@@ -74,12 +74,10 @@ private:
     mutable std::mutex mtx_;
 
     std::unique_ptr<gtsam::ISAM2> optimizer_;
-    gtsam::NonlinearFactorGraph factor_graph_;
-    gtsam::Values initial_graph_values_;
     uint64_t graph_node_index_ = 0;
 
     // GTSAM 參數
-    boost::shared_ptr<gtsam::PreintegrationParams> gtsam_preint_params_;
+    std::shared_ptr<gtsam::PreintegrationParams> gtsam_preint_params_;
     gtsam::noiseModel::Diagonal::shared_ptr correction_noise_;
     gtsam::noiseModel::Diagonal::shared_ptr correction_noise_large_;
     gtsam::Vector noise_model_between_bias_;
