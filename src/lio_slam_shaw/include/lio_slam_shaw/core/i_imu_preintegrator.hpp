@@ -22,9 +22,7 @@ public:
         const std::vector<core::ImuData>& reprop_imu_segment) = 0;
 
     virtual NavState getLatestNavState() const = 0;
-
-    // 查詢指定時間點的 NavState，以歷史紀錄插值取得
-    // 若 queue 為空或時間超出範圍，回傳 nullopt
+    virtual std::vector<NavState> getNavStateQueueSnapshot() const = 0;
     virtual std::optional<NavState> queryNavState(const Timestamp& t) const = 0;
 };
 

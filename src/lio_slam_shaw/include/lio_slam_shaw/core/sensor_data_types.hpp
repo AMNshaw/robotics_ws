@@ -6,6 +6,7 @@
 
 #include <Eigen/Dense>
 #include <chrono>
+#include <vector>
 
 namespace lio_slam_shaw::core {
 

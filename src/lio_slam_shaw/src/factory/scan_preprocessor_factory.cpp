@@ -4,12 +4,11 @@
 
 namespace lio_slam_shaw::factory {
 
-core::IScanPreprocessor::SharedPtr ScanPreprocessorFactory::create(
-    rclcpp::Node::SharedPtr node, const core::IImuPreintegrator::SharedPtr& imu_preintegrator) {
+core::IScanPreprocessor::SharedPtr ScanPreprocessorFactory::create(rclcpp::Node::SharedPtr node) {
     std::string type = node->declare_parameter<std::string>("scan_preprocessor_type", "deskew");
 
     if (type == "deskew") {
-        return createDeskew(imu_preintegrator);
+        return createDeskew();
     }
     RCLCPP_WARN(node->get_logger(),
                 "Unknown scan_preprocessor_type '%s', falling back to passthrough.", type.c_str());
@@ -19,7 +18,7 @@ core::IScanPreprocessor::SharedPtr ScanPreprocessorFactory::create(
 core::IScanPreprocessor::SharedPtr ScanPreprocessorFactory::createDefault() {
     class PassthroughPreprocessor : public core::IScanPreprocessor {
     public:
-        core::LidarData processCloud(const std::vector<core::ImuData>& /*imu_data*/,
+        core::LidarData processCloud(const std::vector<core::NavState>& /*snapshot*/,
                                      const core::LidarData& raw_data) override {
             return raw_data;
         }
@@ -27,9 +26,8 @@ core::IScanPreprocessor::SharedPtr ScanPreprocessorFactory::createDefault() {
     return std::make_shared<PassthroughPreprocessor>();
 }
 
-core::IScanPreprocessor::SharedPtr ScanPreprocessorFactory::createDeskew(
-    const core::IImuPreintegrator::SharedPtr& imu_preintegrator) {
-    return std::make_shared<lidar_preprocessor::ImuDeskewPreprocessor>(imu_preintegrator);
+core::IScanPreprocessor::SharedPtr ScanPreprocessorFactory::createDeskew() {
+    return std::make_shared<lidar_preprocessor::ImuDeskewPreprocessor>();
 }
 
 }  // namespace lio_slam_shaw::factory

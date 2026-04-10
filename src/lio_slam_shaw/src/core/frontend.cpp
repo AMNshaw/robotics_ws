@@ -54,7 +54,8 @@ std::optional<LidarFrame::SharedPtr> FrontEnd::processPipeline() {
         return std::nullopt;
     }
 
-    auto processed_cloud = scan_preprocessor_->processCloud(opt_imu_batch, lidar);
+    auto nav_snapshot = imu_preintegrator_->getNavStateQueueSnapshot();
+    auto processed_cloud = scan_preprocessor_->processCloud(nav_snapshot, lidar);
     auto features = feature_extractor_->extract(processed_cloud);
 
     auto state_odom = imu_preintegrator_->getLatestNavState();

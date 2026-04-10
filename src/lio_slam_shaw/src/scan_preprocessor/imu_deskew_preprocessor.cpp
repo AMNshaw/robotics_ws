@@ -1,78 +1,87 @@
 #include "lio_slam_shaw/lidar_preprocessor/imu_deskew_preprocessor.hpp"
 
+#include <omp.h>
+
+#include <algorithm>
+#include <optional>
+
 namespace lio_slam_shaw::lidar_preprocessor {
 
-ImuDeskewPreprocessor::ImuDeskewPreprocessor(core::IImuPreintegrator::SharedPtr imu_preintegrator)
-    : imu_preintegrator_(std::move(imu_preintegrator)) {}
+namespace {
 
-// =============================================================================
-// ImuDeskewPreprocessor::processCloud
-// =============================================================================
-//
-// 去運動失真 (Motion Undistortion / Deskewing)
-//
-// 一幀 LiDAR 掃描耗時約 0.1s。在此期間機器人持續運動，
-// 導致不同時刻採集的點實際對應不同位姿，形成「運動失真」。
-//
-// 修正方式（全 6-DoF 補償）：
-//   以掃描起始時刻 t_0 的 body frame 為參考系，
-//   對第 i 個點（採集時刻 t_i）：
-//     T_{b_i \to b_0} = T_0^{-1} * T_i
-//     p_{b_0} = T_{b_i \to b_0} * p_{b_i}
-//
-// 旋轉狀態由 IImuPreintegrator::queryNavState 取得：
-//   - nav_state_queue_ 在每次 IMU 積分時即時更新
-//   - bias 由 GTSAM 每幀修正後，queue 清空並重建（repropagation）
-//   - 查詢時做 slerp 插值，精度高於從 Identity 重頭積分
-//
-// imu_data 參數保留（符合 IScanPreprocessor 介面），本函式不直接使用。
-//
-core::LidarData ImuDeskewPreprocessor::processCloud(const std::vector<core::ImuData>& /*imu_data*/,
+// 從已排序的 NavState snapshot 中插値指定時刻的狀態（無鎖）
+std::optional<core::NavState> interpolateNavState(const std::vector<core::NavState>& snapshot,
+                                                  const core::Timestamp& t) {
+    if (snapshot.empty()) return std::nullopt;
+    if (t <= snapshot.front().timestamp) return snapshot.front();
+    if (t >= snapshot.back().timestamp) return snapshot.back();
+
+    auto it = std::lower_bound(
+        snapshot.begin(), snapshot.end(), t,
+        [](const core::NavState& s, const core::Timestamp& ts) { return s.timestamp < ts; });
+
+    const auto& s1 = *it;
+    const auto& s0 = *(it - 1);
+
+    double total = core::getDeltaSec(s0.timestamp, s1.timestamp);
+    if (total < 1e-9) return s0;
+    double alpha = std::clamp(core::getDeltaSec(s0.timestamp, t) / total, 0.0, 1.0);
+
+    Eigen::Quaterniond q0(s0.pose.linear());
+    Eigen::Quaterniond q1(s1.pose.linear());
+
+    core::NavState result;
+    result.timestamp = t;
+    result.pose.linear() = q0.slerp(alpha, q1).normalized().toRotationMatrix();
+    result.pose.translation() =
+        s0.pose.translation() + alpha * (s1.pose.translation() - s0.pose.translation());
+    result.vel = s0.vel + alpha * (s1.vel - s0.vel);
+    result.acc_bias = s0.acc_bias;
+    result.gyr_bias = s0.gyr_bias;
+    result.pose_cov = s0.pose_cov;
+    return result;
+}
+
+}  // namespace
+
+core::LidarData ImuDeskewPreprocessor::processCloud(const std::vector<core::NavState>& snapshot,
                                                     const core::LidarData& raw_cloud) {
-    // -------------------------------------------------------------------------
-    // 0. 短路
-    // -------------------------------------------------------------------------
-    if (!raw_cloud.cloud || raw_cloud.cloud->empty()) {
-        return raw_cloud;
-    }
+    if (!raw_cloud.cloud || raw_cloud.cloud->empty()) return raw_cloud;
+    if (snapshot.empty()) return raw_cloud;
 
-    // -------------------------------------------------------------------------
-    // 1. 查詢掃描起始時刻的 NavState，取得補償基準 T(t_0)^{-1}
-    // -------------------------------------------------------------------------
-    auto state_0_opt = imu_preintegrator_->queryNavState(raw_cloud.time_start);
-    if (!state_0_opt.has_value()) {
-        return raw_cloud;  // queue 為空（尚未初始化），跳過補償
-    }
-    const Eigen::Isometry3d T_0_inv = state_0_opt->pose.inverse();
+    auto state_0 = interpolateNavState(snapshot, raw_cloud.time_start);
+    if (!state_0.has_value()) return raw_cloud;
 
-    // -------------------------------------------------------------------------
-    // 2. 對每個點查詢插值狀態，計算 T_rel 並補償
-    // -------------------------------------------------------------------------
+    const Eigen::Isometry3d T_0_inv = state_0->pose.inverse();
+    const int n = static_cast<int>(raw_cloud.cloud->size());
+
     auto deskewed = std::make_shared<core::PointCloudIRT>();
-    deskewed->reserve(raw_cloud.cloud->size());
+    deskewed->resize(n);
 
-    for (const auto& pt : raw_cloud.cloud->points) {
-        auto pt_time =
+    // 並行補償每個點（snapshot 由呼叫者傳入，無需持鎖）
+#pragma omp parallel for schedule(dynamic, 64) default(none) \
+    shared(snapshot, raw_cloud, deskewed, T_0_inv, n)
+    for (int i = 0; i < n; ++i) {
+        const auto& pt = raw_cloud.cloud->points[i];
+        const auto pt_time =
             raw_cloud.time_start + std::chrono::duration_cast<std::chrono::nanoseconds>(
                                        std::chrono::duration<double>(static_cast<double>(pt.time)));
 
-        auto state_i_opt = imu_preintegrator_->queryNavState(pt_time);
-        if (!state_i_opt.has_value()) {
-            deskewed->push_back(pt);
+        auto state_i = interpolateNavState(snapshot, pt_time);
+        if (!state_i.has_value()) {
+            (*deskewed)[i] = pt;
             continue;
         }
-        const auto T_i = state_i_opt->pose;
-        const Eigen::Isometry3d T_ti_to_t0 = T_0_inv * T_i;
 
-        const Eigen::Vector3f p_orig(pt.x, pt.y, pt.z);
+        const Eigen::Isometry3d T_ti_to_t0 = T_0_inv * state_i->pose;
         const Eigen::Vector3f p_deskewed =
-            (T_ti_to_t0 * p_orig.cast<double>()).cast<float>().eval();
+            (T_ti_to_t0 * Eigen::Vector3d(pt.x, pt.y, pt.z)).cast<float>();
 
         core::PointXYZIRT new_pt = pt;
         new_pt.x = p_deskewed.x();
         new_pt.y = p_deskewed.y();
         new_pt.z = p_deskewed.z();
-        deskewed->push_back(new_pt);
+        (*deskewed)[i] = new_pt;
     }
 
     core::LidarData result = raw_cloud;

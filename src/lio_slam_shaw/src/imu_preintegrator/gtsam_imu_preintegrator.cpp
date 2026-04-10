@@ -132,6 +132,11 @@ core::NavState GtsamImuPreintegrator::getLatestNavState() const {
     return curr_state_;
 }
 
+std::vector<core::NavState> GtsamImuPreintegrator::getNavStateQueueSnapshot() const {
+    std::lock_guard<std::mutex> lock(mtx_);
+    return std::vector<core::NavState>(nav_state_queue_.begin(), nav_state_queue_.end());
+}
+
 std::optional<core::NavState> GtsamImuPreintegrator::queryNavState(const core::Timestamp& t) const {
     std::lock_guard<std::mutex> lock(mtx_);
 
@@ -320,8 +325,10 @@ gtsam::Pose3 GtsamImuPreintegrator::toGtsamPose(const Eigen::Isometry3d& pose) c
 }
 core::NavState GtsamImuPreintegrator::fromGtsamNavState(const gtsam::NavState& g_state,
                                                         const core::Timestamp& timestamp) const {
-    return core::NavState{timestamp, Eigen::Isometry3d(g_state.pose().matrix()),
-                          g_state.velocity()};
+    // g_state is in IMU frame (T_w_imu); convert back to base/body frame: T_w_base = T_w_imu *
+    // T_imu_base
+    const gtsam::Pose3 base_pose = g_state.pose().compose(T_imu_base_);
+    return core::NavState{timestamp, Eigen::Isometry3d(base_pose.matrix()), g_state.velocity()};
 }
 
 }  // namespace lio_slam_shaw

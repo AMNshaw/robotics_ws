@@ -20,6 +20,7 @@ find_package(pcl_conversions REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(PCL REQUIRED)
 find_package(GTSAM REQUIRED)
+find_package(OpenMP REQUIRED)
 
 set(THIRDPARTY_INCLUDE_DIRS
     ${PCL_INCLUDE_DIRS}

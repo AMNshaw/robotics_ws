@@ -7,7 +7,7 @@
       },
       "includePath": [
         "/opt/ros/humble/include/**",
-        "/home/amnshaw/robotics_ws/src/lio_slam_shaw/include/**",
+        "${workspaceFolder}/src/lio_slam_shaw/include/**",
         "${workspaceFolder}/**",
         "/usr/include/pcl-1.10",
         "/usr/include/eigen3",

@@ -47,6 +47,7 @@ public:
         const std::vector<core::ImuData>& reprop_imu_segment) override;
     core::NavState getLatestNavState() const override;
     std::optional<core::NavState> queryNavState(const core::Timestamp& t) const override;
+    std::vector<core::NavState> getNavStateQueueSnapshot() const override;
 
 private:
     // ---- functions----
