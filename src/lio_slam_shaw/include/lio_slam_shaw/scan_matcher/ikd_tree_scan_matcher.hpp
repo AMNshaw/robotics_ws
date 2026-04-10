@@ -22,6 +22,11 @@ struct IkdTreeScanMatcherParams {
     int min_valid_points = 50;
     // Hessian 最大/最小特徵值比值超過此值則視為退化環境
     double degenerate_threshold = 100.0;
+    // lidar-to-body extrinsic：T_body_lidar
+    // trans: [x, y, z] (metres)
+    // rot:   [qx, qy, qz, qw]
+    std::vector<double> T_body_lidar_trans = {0.0, 0.0, 0.0};
+    std::vector<double> T_body_lidar_rot = {0.0, 0.0, 0.0, 1.0};
 };
 
 // GN/LM point-to-plane scan matcher，使用 IMapBuilder 提供的 ikd-Tree 查詢最近鄰
@@ -63,6 +68,7 @@ private:
 
     core::IMapBuilder::SharedPtr map_builder_;
     IkdTreeScanMatcherParams params_;
+    Eigen::Isometry3d T_body_lidar_ = Eigen::Isometry3d::Identity();  // lidar → body extrinsic
 };
 
 }  // namespace lio_slam_shaw::scan_matcher

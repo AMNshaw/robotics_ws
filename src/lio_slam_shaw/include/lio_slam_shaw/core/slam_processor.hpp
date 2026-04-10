@@ -7,6 +7,7 @@
 #include <mutex>
 #include <optional>
 #include <queue>
+#include <shared_mutex>
 #include <thread>
 
 #include "lio_slam_shaw/core/backend.hpp"
@@ -18,6 +19,8 @@ namespace lio_slam_shaw::core {
 
 class SlamProcessor {
 public:
+    using SharedPtr = std::shared_ptr<SlamProcessor>;
+
     explicit SlamProcessor(FrontEnd::SharedPtr frontend, BackEnd::SharedPtr backend);
     ~SlamProcessor();
     SlamProcessor(const SlamProcessor&) = delete;
@@ -45,7 +48,9 @@ private:
     // frontend -> backend 的線程安全 frame queue
     std::mutex backend_mutex_;
     std::condition_variable backend_cv_;
+
     std::queue<LidarFrame::SharedPtr> frame_queue_;
+    std::shared_mutex map_mutex_;
 };
 
 }  // namespace lio_slam_shaw::core

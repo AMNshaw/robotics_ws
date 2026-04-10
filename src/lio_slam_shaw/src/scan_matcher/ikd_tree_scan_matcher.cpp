@@ -7,7 +7,15 @@ namespace lio_slam_shaw::scan_matcher {
 
 IkdTreeScanMatcher::IkdTreeScanMatcher(core::IMapBuilder::SharedPtr map_builder,
                                        const IkdTreeScanMatcherParams& params)
-    : map_builder_(std::move(map_builder)), params_(params) {}
+    : map_builder_(std::move(map_builder)), params_(params) {
+    // 建構 T_body_lidar
+    const auto& t = params.T_body_lidar_trans;
+    const auto& q = params.T_body_lidar_rot;  // [qx, qy, qz, qw]
+    T_body_lidar_ = Eigen::Isometry3d::Identity();
+    T_body_lidar_.linear() =
+        Eigen::Quaterniond(q[3], q[0], q[1], q[2]).normalized().toRotationMatrix();
+    T_body_lidar_.translation() = Eigen::Vector3d(t[0], t[1], t[2]);
+}
 
 core::ScanMatchResult IkdTreeScanMatcher::match(const core::FeatureSet& features,
                                                 const core::NavState& initial_guess) {
@@ -24,7 +32,9 @@ core::ScanMatchResult IkdTreeScanMatcher::match(const core::FeatureSet& features
 
     for (int iter = 0; iter < params_.max_iterations; ++iter) {
         // 1. 以當前位姿估計查詢 k 個最近鄰，並取得擬合平面
-        auto nn_results = map_builder_->queryNearestPoints(cloud, result.pose, params_.k_neighbors);
+        // T_map_lidar = T_map_body * T_body_lidar
+        const Eigen::Isometry3d T_map_lidar = result.pose * T_body_lidar_;
+        auto nn_results = map_builder_->queryNearestPoints(cloud, T_map_lidar, params_.k_neighbors);
 
         Eigen::Matrix<double, 6, 6> H = Eigen::Matrix<double, 6, 6>::Zero();
         Eigen::Matrix<double, 6, 1> b = Eigen::Matrix<double, 6, 1>::Zero();

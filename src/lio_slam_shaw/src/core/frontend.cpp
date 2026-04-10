@@ -13,7 +13,10 @@ FrontEnd::FrontEnd(SensorDataManager::SharedPtr data_manager,
       scan_preprocessor_(std::move(scan_preprocessor)),
       feature_extractor_(std::move(feature_extractor)),
       scan_matcher_(std::move(scan_matcher)),
-      imu_preintegrator_(std::move(imu_preintegrator)) {}
+      imu_preintegrator_(std::move(imu_preintegrator)) {
+    T_map_odom_ = Eigen::Isometry3d::Identity();
+    last_processed_imu_time_ = Timestamp::min();
+}
 
 void FrontEnd::feed_lidar(const LidarData& lidar) { data_manager_->addLidarData(lidar); }
 
@@ -30,12 +33,14 @@ void FrontEnd::feed_imu(const ImuData& imu) {
 
 NavState FrontEnd::getLatestNavState() const {
     std::lock_guard<std::mutex> lock(pipeline_mtx_);
-    return imu_preintegrator_->getLatestNavState();
+    auto state = imu_preintegrator_->getLatestNavState();
+    state.pose = T_map_odom_ * state.pose;  // odometry → map frame
+    return state;
 }
 
-void FrontEnd::updateMapReferenceShift(const Eigen::Isometry3d& shift_matrix) {
+void FrontEnd::applyOdomToMapCorrection(const Eigen::Isometry3d& correction_delta) {
     std::lock_guard<std::mutex> lock(pipeline_mtx_);
-    map_reference_shift_transform_ = shift_matrix;
+    T_map_odom_ = correction_delta * T_map_odom_;
 }
 
 bool FrontEnd::SensorDataSynced() { return data_manager_->hasSyncedData(); }
@@ -52,21 +57,20 @@ std::optional<LidarFrame::SharedPtr> FrontEnd::processPipeline() {
     auto processed_cloud = scan_preprocessor_->processCloud(opt_imu_batch, lidar);
     auto features = feature_extractor_->extract(processed_cloud);
 
-    auto raw_state = imu_preintegrator_->getLatestNavState();
-    auto corrected_state = raw_state;
-    corrected_state.pose = map_reference_shift_transform_ * raw_state.pose;
-    auto matched_result_in_map_ref = scan_matcher_->match(features, corrected_state);
-    auto matched_result_in_local = matched_result_in_map_ref;
-    matched_result_in_local.pose =
-        map_reference_shift_transform_.inverse() * matched_result_in_map_ref.pose;
+    auto state_odom = imu_preintegrator_->getLatestNavState();
+    auto state_map = state_odom;
+    state_map.pose = T_map_odom_ * state_odom.pose;
+    auto matched_result_in_map = scan_matcher_->match(features, state_map);
+    auto matched_result_in_odom = matched_result_in_map;
+    matched_result_in_odom.pose = T_map_odom_.inverse() * matched_result_in_map.pose;
 
     std::vector<ImuData> reprop_imu_batch;
     data_manager_->getBatchImuData(lidar.timestamp, last_processed_imu_time_, reprop_imu_batch);
-    imu_preintegrator_->updateBiasAndRepropagateImus(matched_result_in_local, opt_imu_batch,
+    imu_preintegrator_->updateBiasAndRepropagateImus(matched_result_in_odom, opt_imu_batch,
                                                      reprop_imu_batch);
 
     return LidarFrame::make_frame(frame_id_counter_++, lidar.timestamp, lidar.cloud,
-                                  processed_cloud.cloud, features, matched_result_in_map_ref);
+                                  processed_cloud.cloud, features, matched_result_in_map);
 }
 
 }  // namespace lio_slam_shaw::core

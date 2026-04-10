@@ -37,7 +37,11 @@ void SlamProcessor::frontendThread() {
 
         if (!run_.load()) break;
 
-        auto lidar_frame = front_end_->processPipeline();
+        std::optional<LidarFrame::SharedPtr> lidar_frame;
+        {
+            std::shared_lock<std::shared_mutex> map_lock(map_mutex_);
+            lidar_frame = front_end_->processPipeline();
+        }
         if (!lidar_frame.has_value()) continue;
 
         {
@@ -59,9 +63,12 @@ void SlamProcessor::backendThread() {
         frame_queue_.pop();
         lock.unlock();
 
-        auto correction = back_end_->processFrame(frame);
-        if (correction.has_value()) {
-            front_end_->updateGlobalPose(correction->first, correction->second);
+        back_end_->processFrame(frame);
+        std::optional<Eigen::Isometry3d> global_correction = back_end_->updateGlobalCorrection();
+        if (global_correction.has_value()) {
+            std::unique_lock<std::shared_mutex> map_lock(map_mutex_);
+            back_end_->updateMap();
+            front_end_->applyOdomToMapCorrection(global_correction.value());
         }
     }
 }
