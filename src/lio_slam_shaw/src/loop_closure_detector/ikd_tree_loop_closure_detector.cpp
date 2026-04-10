@@ -1,4 +1,4 @@
-#include "lio_slam_shaw/loop_closure/ikd_tree_loop_closure_detector.hpp"
+#include "lio_slam_shaw/loop_closure_detector/ikd_tree_loop_closure_detector.hpp"
 
 #include <algorithm>
 #include <limits>

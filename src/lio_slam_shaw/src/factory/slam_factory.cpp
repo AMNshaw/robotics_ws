@@ -26,8 +26,9 @@ core::SlamProcessor::SharedPtr SlamFactory::create(rclcpp::Node::SharedPtr node)
     // 4. Map builder
     auto map_builder = MapBuilderFactory::create(node);
 
-    // 5. Scan matcher
-    auto scan_matcher = ScanMatcherFactory::create(node, map_builder);
+    // 5. Scan matcher（local: frontend 用；global: loop closure 用）
+    auto scan_matcher = ScanMatcherFactory::createLocal(node, map_builder);
+    auto lc_scan_matcher = ScanMatcherFactory::createGlobal(node, map_builder);
 
     // 6. Sensor data manager
     auto sensor_data_manager = std::make_shared<core::SensorDataManager>();
@@ -38,7 +39,7 @@ core::SlamProcessor::SharedPtr SlamFactory::create(rclcpp::Node::SharedPtr node)
 
     // 8. Map optimizer & loop closure detector
     auto map_optimizer = MapOptimizerFactory::create(node);
-    auto loop_closure_detector = LoopClosureDetectorFactory::create(node, scan_matcher);
+    auto loop_closure_detector = LoopClosureDetectorFactory::create(node, lc_scan_matcher);
 
     // 9. BackEnd
     auto backend =

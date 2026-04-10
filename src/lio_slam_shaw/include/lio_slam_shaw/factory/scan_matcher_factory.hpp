@@ -10,10 +10,13 @@ namespace lio_slam_shaw::factory {
 
 class ScanMatcherFactory {
 public:
-    // type 由 ROS param "scan_matcher_type" 控制
-    // 支援: "ikd_tree" (預設)
-    static core::IScanMatcher::SharedPtr create(rclcpp::Node::SharedPtr node,
-                                                core::IMapBuilder::SharedPtr map_builder);
+    // Frontend 用：快速收斂，params 前綴 "scan_matcher."
+    static core::IScanMatcher::SharedPtr createLocal(rclcpp::Node::SharedPtr node,
+                                                     core::IMapBuilder::SharedPtr map_builder);
+
+    // Loop closure 用：更多迭代、更嚴格收斂，params 前綴 "loop_closure.scan_matcher."
+    static core::IScanMatcher::SharedPtr createGlobal(rclcpp::Node::SharedPtr node,
+                                                      core::IMapBuilder::SharedPtr map_builder);
 };
 
 }  // namespace lio_slam_shaw::factory

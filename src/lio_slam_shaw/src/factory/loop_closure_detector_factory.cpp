@@ -1,7 +1,8 @@
 #include "lio_slam_shaw/factory/loop_closure_detector_factory.hpp"
 
-#include "lio_slam_shaw/loop_closure/icp_loop_closure_detector.hpp"
-#include "lio_slam_shaw/loop_closure/ikd_tree_loop_closure_detector.hpp"
+#include "lio_slam_shaw/core/i_scan_matcher.hpp"
+#include "lio_slam_shaw/loop_closure_detector/icp_loop_closure_detector.hpp"
+#include "lio_slam_shaw/loop_closure_detector/ikd_tree_loop_closure_detector.hpp"
 
 namespace lio_slam_shaw::factory {
 

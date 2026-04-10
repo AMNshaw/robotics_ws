@@ -1,4 +1,4 @@
-#include "lio_slam_shaw/loop_closure/icp_loop_closure_detector.hpp"
+#include "lio_slam_shaw/loop_closure_detector/icp_loop_closure_detector.hpp"
 
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/registration/icp.h>
