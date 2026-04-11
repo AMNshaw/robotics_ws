@@ -41,6 +41,7 @@ private:
 
     // 取候選附近 local_map_keyframe_num 幀的點雲，組成局部地圖（world frame）
     core::PointCloudIRTPtr buildLocalMap(
+        const core::KeyFrame::SharedPtr& current_keyframe,
         const core::KeyFrame::SharedPtr& candidate,
         const std::vector<core::KeyFrame::SharedPtr>& all_keyframes) const;
 

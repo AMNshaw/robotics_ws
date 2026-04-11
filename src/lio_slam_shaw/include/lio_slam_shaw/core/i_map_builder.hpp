@@ -38,7 +38,11 @@ public:
 
     // 每幀都呼叫：內部 (1) 將點雲插入 ikd-Tree；(2) 判斷是否為 keyframe
     // 是 keyframe 才加入並回傳；否則回傳 nullopt
+
     virtual std::optional<KeyFrame::SharedPtr> addFrame(const LidarFrame::SharedPtr& frame) = 0;
+    virtual void addKeyFrame(const KeyFrame::SharedPtr& keyframe) = 0;
+
+    virtual void clearMap() = 0;
 
     // scan matcher 在每次 GN/LM 迭代時呼叫，以當前位姿估計查詢 k 個最近鄰
     // T_map_lidar: 將 body/lidar 系點雲變換到地圖座標系的當前估計

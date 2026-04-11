@@ -4,8 +4,8 @@
 
 namespace lio_slam_shaw::factory {
 
-core::IScanMatcher::SharedPtr ScanMatcherFactory::createLocal(
-    rclcpp::Node::SharedPtr node, core::IMapBuilder::SharedPtr map_builder) {
+core::IScanMatcher::SharedPtr ScanMatcherFactory::create(rclcpp::Node::SharedPtr node,
+                                                         core::IMapBuilder::SharedPtr map_builder) {
     scan_matcher::IkdTreeScanMatcherParams params;
     params.k_neighbors =
         node->declare_parameter<int>("scan_matcher.k_neighbors", params.k_neighbors);
@@ -21,27 +21,6 @@ core::IScanMatcher::SharedPtr ScanMatcherFactory::createLocal(
         "scan_matcher.T_body_lidar_trans", params.T_body_lidar_trans);
     params.T_body_lidar_rot = node->declare_parameter<std::vector<double>>(
         "scan_matcher.T_body_lidar_rot", params.T_body_lidar_rot);
-    return std::make_shared<scan_matcher::IkdTreeScanMatcher>(map_builder, params);
-}
-
-core::IScanMatcher::SharedPtr ScanMatcherFactory::createGlobal(
-    rclcpp::Node::SharedPtr node, core::IMapBuilder::SharedPtr map_builder) {
-    // 預設值比 local 更嚴格：更多迭代、更高 convergence 要求、更多 valid points
-    scan_matcher::IkdTreeScanMatcherParams params;
-    params.k_neighbors =
-        node->declare_parameter<int>("loop_closure.scan_matcher.k_neighbors", params.k_neighbors);
-    params.max_iterations =
-        node->declare_parameter<int>("loop_closure.scan_matcher.max_iterations", 100);
-    params.convergence_threshold =
-        node->declare_parameter<double>("loop_closure.scan_matcher.convergence_threshold", 1e-6);
-    params.min_valid_points =
-        node->declare_parameter<int>("loop_closure.scan_matcher.min_valid_points", 50);
-    params.degenerate_threshold = node->declare_parameter<double>(
-        "loop_closure.scan_matcher.degenerate_threshold", params.degenerate_threshold);
-    params.T_body_lidar_trans = node->declare_parameter<std::vector<double>>(
-        "loop_closure.scan_matcher.T_body_lidar_trans", params.T_body_lidar_trans);
-    params.T_body_lidar_rot = node->declare_parameter<std::vector<double>>(
-        "loop_closure.scan_matcher.T_body_lidar_rot", params.T_body_lidar_rot);
     return std::make_shared<scan_matcher::IkdTreeScanMatcher>(map_builder, params);
 }
 

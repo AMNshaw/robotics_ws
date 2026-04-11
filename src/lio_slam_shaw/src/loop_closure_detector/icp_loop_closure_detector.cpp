@@ -28,7 +28,7 @@ std::optional<core::LoopConstraint> IcpLoopClosureDetector::detect(
     const auto& candidate = candidate_opt.value();
 
     // ── 第二層：建局部地圖 ─────────────────────────────────────────────────
-    const auto local_map = buildLocalMap(candidate, all_keyframes);
+    const auto local_map = buildLocalMap(current_keyframe, candidate, all_keyframes);
     if (!local_map || local_map->empty()) return std::nullopt;
 
     // ── VoxelGrid downsample ───────────────────────────────────────────────
@@ -123,7 +123,7 @@ std::optional<core::KeyFrame::SharedPtr> IcpLoopClosureDetector::findCandidate(
 // 取候選附近 local_map_keyframe_num 幀，組合成 world frame 的局部地圖
 // ─────────────────────────────────────────────────────────────────────────────
 core::PointCloudIRTPtr IcpLoopClosureDetector::buildLocalMap(
-    const core::KeyFrame::SharedPtr& candidate,
+    const core::KeyFrame::SharedPtr& current_keyframe, const core::KeyFrame::SharedPtr& candidate,
     const std::vector<core::KeyFrame::SharedPtr>& all_keyframes) const {
     const Eigen::Vector3d cand_pos = candidate->pose.translation();
 
@@ -131,6 +131,11 @@ core::PointCloudIRTPtr IcpLoopClosureDetector::buildLocalMap(
     std::vector<std::pair<double, core::KeyFrame::SharedPtr>> dist_kf;
     dist_kf.reserve(all_keyframes.size());
     for (const auto& kf : all_keyframes) {
+        const double time_diff =
+            std::abs(core::getDeltaSec(kf->timestamp, current_keyframe->timestamp));
+        if (time_diff < params_.min_time_gap_sec) {
+            continue;
+        }
         const double d = (kf->pose.translation() - cand_pos).norm();
         dist_kf.emplace_back(d, kf);
     }

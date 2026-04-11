@@ -35,6 +35,9 @@ public:
 
     std::optional<core::KeyFrame::SharedPtr> addFrame(
         const core::LidarFrame::SharedPtr& frame) override;
+    void addKeyFrame(const core::KeyFrame::SharedPtr& keyframe) override;
+
+    void clearMap() override;
 
     std::vector<core::NearestPointResult> queryNearestPoints(
         const core::PointCloudIRTPtr& query_cloud, const Eigen::Isometry3d& T_map_lidar,

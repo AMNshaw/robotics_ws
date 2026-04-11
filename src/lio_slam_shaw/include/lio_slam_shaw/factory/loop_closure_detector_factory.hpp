@@ -4,6 +4,7 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include "lio_slam_shaw/core/i_loop_closure_detector.hpp"
+#include "lio_slam_shaw/core/i_map_builder.hpp"
 #include "lio_slam_shaw/core/i_scan_matcher.hpp"
 
 namespace lio_slam_shaw::factory {
@@ -14,7 +15,7 @@ public:
     // 支援: "icp" (預設), "ikd_tree"
     // scan_matcher 僅 "ikd_tree" 使用，"icp" 可傳 nullptr
     static core::ILoopClosureDetector::SharedPtr create(
-        rclcpp::Node::SharedPtr node, core::IScanMatcher::SharedPtr scan_matcher = nullptr);
+        rclcpp::Node::SharedPtr node, core::IMapBuilder::SharedPtr map_builder = nullptr);
 };
 
 }  // namespace lio_slam_shaw::factory

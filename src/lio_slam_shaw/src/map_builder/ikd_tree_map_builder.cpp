@@ -47,6 +47,34 @@ std::optional<core::KeyFrame::SharedPtr> IkdTreeMapBuilder::addFrame(
     return kf;
 }
 
+void IkdTreeMapBuilder::addKeyFrame(const core::KeyFrame::SharedPtr& keyframe) {
+    if (!keyframe || !keyframe->cloud || keyframe->cloud->empty()) return;
+
+    KD_TREE<core::PointXYZIRT>::PointVector points_world;
+    points_world.reserve(keyframe->cloud->size());
+    for (const auto& p : *keyframe->cloud) {
+        Eigen::Vector3d pw = keyframe->pose * Eigen::Vector3d(p.x, p.y, p.z);
+        core::PointXYZIRT pt = p;
+        pt.x = static_cast<float>(pw.x());
+        pt.y = static_cast<float>(pw.y());
+        pt.z = static_cast<float>(pw.z());
+        points_world.push_back(pt);
+    }
+    ikd_tree_.Add_Points(points_world, true);  // downsample_on = true
+
+    keyframe_index_[keyframe->id] = keyframes_.size();
+    keyframes_.push_back(keyframe);
+}
+
+void IkdTreeMapBuilder::clearMap() {
+    ikd_tree_.~KD_TREE();
+    new (&ikd_tree_) KD_TREE<core::PointXYZIRT>(params_.ikd_delete_param, params_.ikd_balance_param,
+                                                params_.ikd_downsample_size);
+    keyframes_.clear();
+    keyframe_index_.clear();
+    next_keyframe_id_ = 0;
+}
+
 // ── queryNearestPoints ────────────────────────────────────────────────────────
 
 std::vector<core::NearestPointResult> IkdTreeMapBuilder::queryNearestPoints(
