@@ -12,6 +12,7 @@
 
 #include "lio_slam_shaw/core/backend.hpp"
 #include "lio_slam_shaw/core/frontend.hpp"
+#include "lio_slam_shaw/core/i_map_builder.hpp"
 #include "lio_slam_shaw/core/sensor_data_manager.hpp"
 #include "lio_slam_shaw/core/sensor_data_types.hpp"
 
@@ -21,7 +22,8 @@ class SlamProcessor {
 public:
     using SharedPtr = std::shared_ptr<SlamProcessor>;
 
-    explicit SlamProcessor(FrontEnd::SharedPtr frontend, BackEnd::SharedPtr backend);
+    explicit SlamProcessor(FrontEnd::SharedPtr frontend, BackEnd::SharedPtr backend,
+                           IMapBuilder::SharedPtr map_builder);
     ~SlamProcessor();
     SlamProcessor(const SlamProcessor&) = delete;
     SlamProcessor& operator=(const SlamProcessor&) = delete;
@@ -37,6 +39,7 @@ private:
 
     FrontEnd::SharedPtr front_end_;
     BackEnd::SharedPtr back_end_;
+    IMapBuilder::SharedPtr map_builder_;
 
     std::atomic<bool> run_{false};
     std::thread frontend_thread_;
@@ -49,7 +52,7 @@ private:
     std::mutex backend_mutex_;
     std::condition_variable backend_cv_;
 
-    std::queue<LidarFrame::SharedPtr> frame_queue_;
+    std::queue<KeyFrame::SharedPtr> keyframe_queue_;
     std::shared_mutex map_mutex_;
 };
 

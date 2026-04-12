@@ -22,7 +22,7 @@ public:
 
     // 處理新幀：插入地圖、加入 odometry edge、偵測 loop closure
     // loop closure 後將修正資訊存入 pending，等待 SlamProcessor 持鎖後統一套用
-    void processFrame(const LidarFrame::SharedPtr& frame);
+    void processKeyframe(const KeyFrame::SharedPtr& frame);
 
     // 取出並清除 pending correction delta（T_corrected * T_original⁻¹）
     // 若無 loop closure 則回傳 nullopt

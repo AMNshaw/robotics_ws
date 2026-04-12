@@ -19,6 +19,7 @@ struct KeyFrame {
     Eigen::Isometry3d pose = Eigen::Isometry3d::Identity();  // 全局地圖座標系
     FeatureSet features;
     PointCloudIRTPtr cloud;  // deskewed 點雲
+    core::ScanMatchResult matched_result;
 };
 
 // queryNearestPoints 的單點查詢結果，供 scan matcher 建構 point-to-plane 殘差使用
@@ -55,6 +56,8 @@ public:
     // KeyFrame::cloud 是 body frame，不需要修改
     virtual void updateKeyframePoses(
         const std::vector<std::pair<uint64_t, Eigen::Isometry3d>>& id_pose_pairs) = 0;
+
+    virtual void updateMap() = 0;
 
     // 供 loop closure detector 查詢歷史 keyframe
     virtual std::vector<KeyFrame::SharedPtr> getAllKeyframes() const = 0;

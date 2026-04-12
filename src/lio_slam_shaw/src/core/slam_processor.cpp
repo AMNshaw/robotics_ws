@@ -2,8 +2,11 @@
 
 namespace lio_slam_shaw::core {
 
-SlamProcessor::SlamProcessor(FrontEnd::SharedPtr frontend, BackEnd::SharedPtr backend)
-    : front_end_(std::move(frontend)), back_end_(std::move(backend)) {}
+SlamProcessor::SlamProcessor(FrontEnd::SharedPtr frontend, BackEnd::SharedPtr backend,
+                             IMapBuilder::SharedPtr map_builder)
+    : front_end_(std::move(frontend)),
+      back_end_(std::move(backend)),
+      map_builder_(std::move(map_builder)) {}
 
 SlamProcessor::~SlamProcessor() {
     run_.store(false);
@@ -37,33 +40,34 @@ void SlamProcessor::frontendThread() {
 
         if (!run_.load()) break;
 
-        std::optional<LidarFrame::SharedPtr> lidar_frame;
+        std::optional<KeyFrame::SharedPtr> keyframe_to_push;
         {
             std::shared_lock<std::shared_mutex> map_lock(map_mutex_);
-            lidar_frame = front_end_->processPipeline();
+            std::optional<LidarFrame::SharedPtr> lidar_frame_opt = front_end_->processPipeline();
+            if (!lidar_frame_opt.has_value()) continue;
+            keyframe_to_push = map_builder_->addFrame(lidar_frame_opt.value());
         }
-        if (!lidar_frame.has_value()) continue;
-
-        {
+        if (keyframe_to_push.has_value()) {
             std::lock_guard<std::mutex> backend_lock(backend_mutex_);
-            frame_queue_.push(lidar_frame.value());
+            keyframe_queue_.push(keyframe_to_push.value());
+            backend_cv_.notify_one();
         }
-        backend_cv_.notify_one();
     }
 }
 
 void SlamProcessor::backendThread() {
     while (run_.load()) {
-        std::unique_lock<std::mutex> lock(backend_mutex_);
-        backend_cv_.wait(lock, [this] { return !run_.load() || !frame_queue_.empty(); });
+        KeyFrame::SharedPtr keyframe;
+        {
+            std::unique_lock<std::mutex> lock(backend_mutex_);
+            backend_cv_.wait(lock, [this] { return !run_.load() || !keyframe_queue_.empty(); });
+            if (!run_.load()) break;
 
-        if (!run_.load()) break;
+            keyframe = keyframe_queue_.front();
+            keyframe_queue_.pop();
+        }
 
-        auto frame = frame_queue_.front();
-        frame_queue_.pop();
-        lock.unlock();
-
-        back_end_->processFrame(frame);
+        back_end_->processKeyframe(keyframe);
         std::optional<Eigen::Isometry3d> global_correction = back_end_->updateGlobalCorrection();
         if (global_correction.has_value()) {
             std::unique_lock<std::shared_mutex> map_lock(map_mutex_);
