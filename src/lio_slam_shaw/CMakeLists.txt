@@ -18,7 +18,7 @@ find_package(tf2_eigen REQUIRED)
 find_package(pcl_conversions REQUIRED)
 
 find_package(Eigen3 REQUIRED)
-find_package(PCL REQUIRED)
+find_package(PCL REQUIRED COMPONENTS common io filters kdtree search registration)
 find_package(GTSAM REQUIRED)
 find_package(OpenMP REQUIRED)
 
@@ -26,6 +26,7 @@ set(THIRDPARTY_INCLUDE_DIRS
     ${PCL_INCLUDE_DIRS}
     ${EIGEN3_INCLUDE_DIRS}
     ${GTSAM_INCLUDE_DIR}   
+    ${OpenMP_INCLUDE_DIRS}
 )
 
 include_directories(
@@ -33,6 +34,133 @@ include_directories(
     ${THIRDPARTY_INCLUDE_DIRS}
 )
 
+add_library(imu_preintegrator
+  src/imu_preintegrator/gtsam_imu_preintegrator.cpp
+)
+target_link_libraries(imu_preintegrator
+  ${GTSAM_LIBRARIES}
+  OpenMP::OpenMP_CXX
+)
+
+add_library(scan_preprocessor
+  src/scan_preprocessor/imu_deskew_preprocessor.cpp
+)
+target_link_libraries(scan_preprocessor
+  ${PCL_LIBRARIES}
+  OpenMP::OpenMP_CXX
+)
+
+add_library(map_builder
+  src/map_builder/ikd_tree_map_builder.cpp
+  src/map_builder/ikd_tree.cpp
+)
+target_link_libraries(map_builder
+  ${PCL_LIBRARIES}
+  OpenMP::OpenMP_CXX
+)
+
+add_library(scan_matcher
+  src/scan_matcher/ikd_tree_scan_matcher.cpp
+)
+target_link_libraries(scan_matcher
+  map_builder
+  ${PCL_LIBRARIES}
+  OpenMP::OpenMP_CXX
+)
+
+add_library(feature_extractor
+  src/feature_extractor/passthrough_feature_extractor.cpp
+)
+target_link_libraries(feature_extractor
+  ${PCL_LIBRARIES}
+)
+
+add_library(map_optimizer
+  src/map_optimizer/gtsam_map_optimizer.cpp
+)
+target_link_libraries(map_optimizer
+  ${GTSAM_LIBRARIES}
+  OpenMP::OpenMP_CXX
+)
+
+add_library(loop_closure_detector
+  src/loop_closure_detector/ikd_tree_loop_closure_detector.cpp
+  src/loop_closure_detector/icp_loop_closure_detector.cpp
+)
+target_link_libraries(loop_closure_detector
+  scan_matcher
+  map_builder
+  ${PCL_LIBRARIES}
+)
+
+add_library(core
+  src/core/frontend.cpp
+  src/core/backend.cpp
+  src/core/sensor_data_manager.cpp
+  src/core/slam_processor.cpp
+)
+target_link_libraries(core
+  imu_preintegrator
+  scan_preprocessor
+  feature_extractor
+  scan_matcher
+  map_builder
+  map_optimizer
+  loop_closure_detector
+)
+ament_target_dependencies(core
+  rclcpp
+  sensor_msgs
+  nav_msgs
+  geometry_msgs
+)
+
+add_library(factory
+  src/factory/feature_extractor_factory.cpp
+  src/factory/imu_preintegrator_factory.cpp
+  src/factory/loop_closure_detector_factory.cpp
+  src/factory/map_builder_factory.cpp
+  src/factory/map_optimizer_factory.cpp
+  src/factory/scan_matcher_factory.cpp
+  src/factory/scan_preprocessor_factory.cpp
+  src/factory/slam_factory.cpp
+)
+target_link_libraries(factory
+  core
+  imu_preintegrator
+  scan_preprocessor
+  feature_extractor
+  scan_matcher
+  map_builder
+  map_optimizer
+  loop_closure_detector
+)
+ament_target_dependencies(factory
+  rclcpp
+)
+
+add_executable(slam_node
+  src/slam_node.cpp
+)
+target_link_libraries(slam_node
+  factory
+  core
+)
+ament_target_dependencies(slam_node
+  rclcpp
+  std_msgs
+  sensor_msgs
+  nav_msgs
+  geometry_msgs
+  tf2
+  tf2_ros
+  tf2_eigen
+  pcl_conversions
+)
+
+install(TARGETS slam_node
+  DESTINATION lib/${PROJECT_NAME}
+)
 
 
 

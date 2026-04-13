@@ -37,6 +37,10 @@ struct PointXYZIRT {
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 } EIGEN_ALIGN16;
 
+using PointCloudIRT = pcl::PointCloud<PointXYZIRT>;
+using PointCloudIRTPtr = PointCloudIRT::Ptr;
+using PointCloudIRTConstPtr = PointCloudIRT::ConstPtr;
+
 struct LidarData {
     Timestamp timestamp;
     Timestamp time_start;
@@ -47,10 +51,6 @@ struct LidarData {
     LidarData(Timestamp t, Timestamp t_s, Timestamp t_e, const PointCloudIRTPtr& c)
         : timestamp(t), time_start(t_s), time_end(t_e), cloud(c) {}
 };
-
-using PointCloudIRT = pcl::PointCloud<PointXYZIRT>;
-using PointCloudIRTPtr = PointCloudIRT::Ptr;
-using PointCloudIRTConstPtr = PointCloudIRT::ConstPtr;
 
 struct ImuData {
     Timestamp timestamp;
