@@ -24,7 +24,7 @@ struct GtsamImuPreintegratorParams {
     double imu_acc_bias_noise = 6.4356659353532566e-05;
     double imu_gyr_bias_noise = 3.5640318696367613e-05;
 
-    size_t marginalization_threshold_ = 100;
+    size_t marginalization_threshold = 100;
 
     std::vector<double> T_base_imu_trans = {0.0, 0.0, 0.0};
     std::vector<double> T_base_imu_rot = {1.0, 0.0, 0.0, 0.0};
