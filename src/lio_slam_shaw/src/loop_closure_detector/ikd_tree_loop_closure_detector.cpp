@@ -15,15 +15,11 @@ IkdTreeLoopClosureDetector::IkdTreeLoopClosureDetector(
         std::make_shared<scan_matcher::IkdTreeScanMatcher>(map_builder_, scan_matcher_params);
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// detect
-// ─────────────────────────────────────────────────────────────────────────────
 std::optional<core::LoopConstraint> IkdTreeLoopClosureDetector::detect(
     const core::KeyFrame::SharedPtr& current_keyframe, core::IMapBuilder::SharedPtr map_builder) {
     const auto all_keyframes = map_builder->getAllKeyframes();
     if (all_keyframes.size() < 2) return std::nullopt;
 
-    // ── 第一層：找候選 ──────────────────────────────────────────────────────
     const auto candidate_opt = findCandidate(current_keyframe, all_keyframes);
     if (!candidate_opt.has_value()) return std::nullopt;
     const auto& candidate = candidate_opt.value();
@@ -31,13 +27,10 @@ std::optional<core::LoopConstraint> IkdTreeLoopClosureDetector::detect(
     if (!current_keyframe->cloud || current_keyframe->cloud->empty()) return std::nullopt;
 
     buildLocalMap(current_keyframe, candidate, all_keyframes);
-    // ── 第二層：委託給 scan_matcher 做 point-to-plane 配準 ─────────────────
-    // initial guess：用 current keyframe 的已知 pose（在 global map frame）
+
     core::NavState initial_guess;
     initial_guess.pose = current_keyframe->pose;
 
-    // scan_matcher 使用的是 ikd-Tree（global map），直接查最近鄰做 GN
-    // features.raw_deskewed 是 body frame 的點雲
     core::FeatureSet features;
     features.raw_deskewed = current_keyframe->cloud;
 
@@ -46,19 +39,12 @@ std::optional<core::LoopConstraint> IkdTreeLoopClosureDetector::detect(
         return std::nullopt;
     }
 
-    // ── 計算相對位姿 ──────────────────────────────────────────────────────
-    // result.pose = T_w_from_corrected（GN 最佳化後的 current frame 位姿）
-    // BetweenFactor(from, to, z): z = T_w_from_corrected.inverse() * T_w_to
     const Eigen::Isometry3d relative_pose = result.pose.inverse() * candidate->pose;
 
-    // covariance 直接取 scan_matcher 計算的 H^{-1}，比固定 sigma 更準確
     return core::LoopConstraint{current_keyframe->id, candidate->id, relative_pose,
                                 result.covariance, result.fitness_score};
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// findCandidate — radius search + time gap filter
-// ─────────────────────────────────────────────────────────────────────────────
 std::optional<core::KeyFrame::SharedPtr> IkdTreeLoopClosureDetector::findCandidate(
     const core::KeyFrame::SharedPtr& current_keyframe,
     const std::vector<core::KeyFrame::SharedPtr>& all_keyframes) const {

@@ -11,16 +11,13 @@
 namespace lio_slam_shaw {
 
 struct IkdTreeLoopClosureDetectorParams {
-    // 第一層：候選篩選
     double search_radius = 15.0;
     double min_time_gap_sec = 30.0;
     int local_map_keyframe_num = 25;
 
-    double fitness_score_threshold = 0.3;  // 接受 loop 的 fitness 門檻（越小越嚴格）
+    double fitness_score_threshold = 0.3;
 };
 
-// Loop closure detector，直接委託給 IScanMatcher 做 point-to-plane 配準
-// 不重複 GN 邏輯，covariance 也直接取自 scan_matcher 回傳的 H^{-1}
 class IkdTreeLoopClosureDetector : public core::ILoopClosureDetector {
 public:
     IkdTreeLoopClosureDetector(const scan_matcher::IkdTreeScanMatcherParams& scan_matcher_params,

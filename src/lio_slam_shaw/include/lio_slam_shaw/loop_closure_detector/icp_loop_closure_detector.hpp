@@ -9,18 +9,15 @@
 namespace lio_slam_shaw {
 
 struct IcpLoopClosureDetectorParams {
-    // 第一層：候選篩選
-    double search_radius = 15.0;      // 空間搜尋半徑 (m)
-    double min_time_gap_sec = 30.0;   // 與當前幀的最小時間差，避免剛走過的幀誤觸發
-    int local_map_keyframe_num = 25;  // 建構局部地圖時，取候選附近幾幀
+    double search_radius = 15.0;
+    double min_time_gap_sec = 30.0;
+    int local_map_keyframe_num = 25;
 
-    // 第二層：ICP 幾何驗證
-    float icp_downsample_leaf = 0.4f;  // VoxelGrid downsample leaf size (m)
-    double icp_max_corr_dist = 0.3;    // ICP max correspondence distance (m)
+    float icp_downsample_leaf = 0.4f;
+    double icp_max_corr_dist = 0.3;
     int icp_max_iterations = 100;
-    double fitness_score_threshold = 0.3;  // 接受 loop 的 fitness 門檻（越小越嚴格）
+    double fitness_score_threshold = 0.3;
 
-    // LoopConstraint noise：對角 sigmas [rot(3), trans(3)]，fitness 越差倍率越大
     double noise_sigma_rot = 0.1;
     double noise_sigma_trans = 0.1;
 };
@@ -34,12 +31,10 @@ public:
                                                core::IMapBuilder::SharedPtr map_builder) override;
 
 private:
-    // 用 getAllKeyframes() 做 radius search，加上時間間隔過濾，取最近的一幀候選
     std::optional<core::KeyFrame::SharedPtr> findCandidate(
         const core::KeyFrame::SharedPtr& current_keyframe,
         const std::vector<core::KeyFrame::SharedPtr>& all_keyframes) const;
 
-    // 取候選附近 local_map_keyframe_num 幀的點雲，組成局部地圖（world frame）
     core::PointCloudIRTPtr buildLocalMap(
         const core::KeyFrame::SharedPtr& current_keyframe,
         const core::KeyFrame::SharedPtr& candidate,

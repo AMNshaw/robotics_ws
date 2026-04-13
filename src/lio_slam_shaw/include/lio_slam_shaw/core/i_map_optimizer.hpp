@@ -16,17 +16,12 @@ public:
 
     virtual ~IMapOptimizer() = default;
 
-    // 加入新的 keyframe 連結（odometry edge）
-    // matched_result.pose 是全局座標系下的絕對位姿，內部計算相對 pose 後建構 BetweenFactor
     virtual void addKeyframe(uint64_t keyframe_id, const ScanMatchResult& matched_result) = 0;
 
-    // 加入 loop closure 約束（僅將 factor 加入 graph，不立即優化）
     virtual void addLoopConstraint(const LoopConstraint& constraint) = 0;
 
-    // 執行全局優化，回傳所有 keyframe 的修正後 pose（用於更新 MapBuilder）
     virtual std::vector<std::pair<uint64_t, Eigen::Isometry3d>> optimize() = 0;
 
-    // 查詢指定 keyframe 優化後的 pose
     virtual NavState getKeyframePose(uint64_t keyframe_id) const = 0;
 };
 

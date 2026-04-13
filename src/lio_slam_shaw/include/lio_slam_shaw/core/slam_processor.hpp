@@ -48,7 +48,6 @@ private:
     std::mutex sync_mutex_;
     std::condition_variable sync_cv_;
 
-    // frontend -> backend 的線程安全 frame queue
     std::mutex backend_mutex_;
     std::condition_variable backend_cv_;
 

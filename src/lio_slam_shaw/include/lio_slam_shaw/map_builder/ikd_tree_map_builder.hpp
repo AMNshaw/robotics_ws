@@ -12,21 +12,16 @@
 namespace lio_slam_shaw::map_builder {
 
 struct IkdTreeMapBuilderParams {
-    // keyframe 判斷條件（與上一個 keyframe 的距離/角度閾值）
-    double keyframe_distance_threshold = 1.0;  // meters
-    double keyframe_angle_threshold = 0.2;     // radians
+    double keyframe_distance_threshold = 1.0;
+    double keyframe_angle_threshold = 0.2;
 
-    // ikd-Tree 參數
     float ikd_delete_param = 0.5f;
     float ikd_balance_param = 0.6f;
-    float ikd_downsample_size = 0.3f;  // voxel size for downsampling on insert
+    float ikd_downsample_size = 0.3f;
 
-    // queryNearestPoints 最大搜尋距離
     double max_search_dist = 5.0;
 
-    // 平面擬合最小點數（法向量有效性判斷）
     int min_plane_points = 5;
-    // 平面有效性（最小/最大特徵值比值）
     double plane_valid_threshold = 0.1;
 };
 
@@ -56,10 +51,8 @@ public:
     core::PointCloudIRTPtr getGlobalMap() const override;
 
 private:
-    // 判斷是否要建立新 keyframe（給後端 pose graph 用，與 ikd-Tree 插入無關）
     bool isNewKeyframe(const Eigen::Isometry3d& pose) const;
 
-    // 平面擬合（PCA），回傳法向量與重心
     core::NearestPointResult fitPlane(const KD_TREE<core::PointXYZIRT>::PointVector& neighbors,
                                       const Eigen::Vector3d& query_point_in_map) const;
 

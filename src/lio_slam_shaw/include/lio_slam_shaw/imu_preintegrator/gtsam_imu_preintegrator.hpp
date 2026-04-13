@@ -1,15 +1,6 @@
 #ifndef LIO_SLAM_SHAW__IMU_PREINTEGRATOR__GTSAM_IMU_PREINTEGRATOR_HPP_
 #define LIO_SLAM_SHAW__IMU_PREINTEGRATOR__GTSAM_IMU_PREINTEGRATOR_HPP_
 
-#include <chrono>
-#include <deque>
-#include <memory>
-#include <mutex>
-
-// Core 介面
-#include "lio_slam_shaw/core/i_imu_preintegrator.hpp"
-
-// GTSAM 依賴
 #include <gtsam/geometry/Pose3.h>
 #include <gtsam/navigation/CombinedImuFactor.h>
 #include <gtsam/navigation/ImuFactor.h>
@@ -17,9 +8,15 @@
 #include <gtsam/nonlinear/NonlinearFactorGraph.h>
 #include <gtsam/nonlinear/Values.h>
 
+#include <chrono>
+#include <deque>
+#include <memory>
+#include <mutex>
+
+#include "lio_slam_shaw/core/i_imu_preintegrator.hpp"
+
 namespace lio_slam_shaw {
 
-// 透過 Factory 或 Node 傳入的參數
 struct GtsamImuPreintegratorParams {
     double gravity = 9.80511;
     double imu_acc_noise = 3.9939570888238808e-03;
@@ -50,7 +47,6 @@ public:
     std::vector<core::NavState> getNavStateQueueSnapshot() const override;
 
 private:
-    // ---- functions----
     void integrateImusAndPredictNoLock(const std::vector<core::ImuData>& imus);
     void initFirstFrame(const gtsam::Pose3& current_pose);
     void resetOptimization();
@@ -64,8 +60,6 @@ private:
     gtsam::Pose3 toGtsamPose(const Eigen::Isometry3d& pose) const;
     core::NavState fromGtsamNavState(const gtsam::NavState& g_state,
                                      const core::Timestamp& timestamp) const;
-
-    // ---- members----
 
     GtsamImuPreintegratorParams params_;
     gtsam::Pose3 T_base_imu_;
@@ -91,8 +85,6 @@ private:
     core::NavState curr_state_{};
     core::ImuData last_imu_{};
 
-    // 每次 integrateImusAndPredict 的中間預測狀態，供 deskew 插值查詢
-    // 在 updateBiasAndRepropagateImus 重新設定 bias 前清空，再由 repropagation 重建
     std::deque<core::NavState> nav_state_queue_;
 };
 

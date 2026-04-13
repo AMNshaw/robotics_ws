@@ -34,7 +34,7 @@ core::SlamProcessor::SharedPtr SlamFactory::create(rclcpp::Node::SharedPtr node)
     auto backend =
         std::make_shared<core::BackEnd>(map_builder, map_optimizer, loop_closure_detector);
 
-    return std::make_shared<core::SlamProcessor>(frontend, backend);
+    return std::make_shared<core::SlamProcessor>(frontend, backend, map_builder);
 }
 
 }  // namespace lio_slam_shaw::factory

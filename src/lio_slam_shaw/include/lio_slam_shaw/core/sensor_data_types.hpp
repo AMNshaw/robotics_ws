@@ -29,7 +29,6 @@ struct NavState {
     Eigen::Vector3d gyr_bias = Eigen::Vector3d::Zero();
 };
 
-// 1. 自定義的 LIO-SAM 點雲格式
 struct PointXYZIRT {
     PCL_ADD_POINT4D;
     float intensity;
@@ -39,11 +38,10 @@ struct PointXYZIRT {
 } EIGEN_ALIGN16;
 
 struct LidarData {
-    Timestamp timestamp;   // 這一幀的基準時間 (通常是 ROS Header 的時間)
-    Timestamp time_start;  // 第一顆點的絕對時間
-    Timestamp time_end;    // 最後一顆點的絕對時間
+    Timestamp timestamp;
+    Timestamp time_start;
+    Timestamp time_end;
 
-    // 2. 數據本體 (使用 Smart Pointer 實現 Zero-copy)
     PointCloudIRTPtr cloud;
     LidarData() = default;
     LidarData(Timestamp t, Timestamp t_s, Timestamp t_e, const PointCloudIRTPtr& c)
@@ -55,7 +53,7 @@ using PointCloudIRTPtr = PointCloudIRT::Ptr;
 using PointCloudIRTConstPtr = PointCloudIRT::ConstPtr;
 
 struct ImuData {
-    Timestamp timestamp;  // 改用 chrono
+    Timestamp timestamp;
     Eigen::Vector3d acc;
     Eigen::Vector3d gyr;
 };
@@ -71,14 +69,12 @@ struct FeatureSet {
 };
 
 struct ScanMatchResult {
-    // 1. 匹配收斂後的 6-DoF 位姿 (通常是在 Map 座標系下的 Global Pose)
     Eigen::Isometry3d pose = Eigen::Isometry3d::Identity();
     Eigen::Matrix<double, 6, 6> covariance = Eigen::Matrix<double, 6, 6>::Identity() * 1e-4;
 
-    // 3. 匹配健康度指標
-    bool is_converged = false;   // ICP 有沒有收斂？
-    bool is_degenerate = false;  // 是不是處於缺乏特徵的退化環境 (例如空曠隧道)？
-    double fitness_score = 0.0;  // 點到面的平均殘差
+    bool is_converged = false;
+    bool is_degenerate = false;
+    double fitness_score = 0.0;
 };
 
 }  // namespace lio_slam_shaw::core

@@ -9,16 +9,14 @@
 
 namespace lio_slam_shaw::core {
 
-// Loop closure 的約束資料，由 ILoopClosureDetector 產生，傳入 IMapOptimizer
 struct LoopConstraint {
-    uint64_t from_id;  // 當前幀 keyframe id
-    uint64_t to_id;    // 历史幀 keyframe id
+    uint64_t from_id;
+    uint64_t to_id;
 
-    // 相對位姿: T_to_from，即從 from 到 to 的變換
     Eigen::Isometry3d relative_pose = Eigen::Isometry3d::Identity();
     Eigen::Matrix<double, 6, 6> covariance = Eigen::Matrix<double, 6, 6>::Identity() * 1e-2;
 
-    double fitness_score = 0.0;  // ICP fitness，越小越好
+    double fitness_score = 0.0;
 };
 
 class ILoopClosureDetector {
@@ -28,8 +26,6 @@ public:
 
     virtual ~ILoopClosureDetector() = default;
 
-    // 以當前 keyframe 對歷史地圖偵測 loop closure
-    // 若找到，回傳 LoopConstraint；未找到回傳 nullopt
     virtual std::optional<LoopConstraint> detect(const KeyFrame::SharedPtr& current_keyframe,
                                                  core::IMapBuilder::SharedPtr map_builder) = 0;
 };

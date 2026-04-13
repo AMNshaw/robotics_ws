@@ -18,17 +18,14 @@ struct LidarFrame {
     uint64_t id;
     Timestamp timestamp;
 
-    // 點雲數據指標
     pcl::PointCloud<PointXYZIRT>::Ptr raw_cloud;
     pcl::PointCloud<PointXYZIRT>::Ptr deskewed_cloud;
     FeatureSet features;
 
-    // 前端 scan match 結果，後端 pose graph 用
     ScanMatchResult matched_result;
 
     bool is_keyframe = false;
 
-    // 建構子
     LidarFrame(uint64_t frame_id, Timestamp stamp)
         : id(frame_id),
           timestamp(stamp),
@@ -45,9 +42,6 @@ struct LidarFrame {
           features(features),
           matched_result(matched_result) {}
 
-    /**
-     * @brief 靜態工廠函式，統一管理 Frame 的生成
-     */
     static SharedPtr make_frame(uint64_t id, Timestamp stamp) {
         return std::make_shared<LidarFrame>(id, stamp);
     }

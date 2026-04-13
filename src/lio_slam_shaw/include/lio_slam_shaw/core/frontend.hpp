@@ -36,8 +36,6 @@ public:
 
     std::optional<LidarFrame::SharedPtr> processPipeline();
 
-    // 後端 loop closure 後呼叫，傳入 delta = T_corrected * T_original⁻¹
-    // 內部左乘更新 T_map_odom_
     void applyOdomToMapCorrection(const Eigen::Isometry3d& correction_delta);
 
 private:
@@ -51,9 +49,6 @@ private:
     Timestamp last_processed_imu_time_;
     uint64_t frame_id_counter_ = 0;
 
-    // T_map_odom_: odometry frame → map frame 的累積轉換
-    // 初始為 Identity（odometry frame 與 map frame 重合）
-    // 每次 loop closure 後由 correction delta 左乘更新
     Eigen::Isometry3d T_map_odom_ = Eigen::Isometry3d::Identity();
 };
 }  // namespace lio_slam_shaw::core

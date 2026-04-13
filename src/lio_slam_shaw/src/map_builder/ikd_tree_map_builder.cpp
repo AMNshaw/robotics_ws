@@ -11,8 +11,6 @@ IkdTreeMapBuilder::IkdTreeMapBuilder(const IkdTreeMapBuilderParams& params) : pa
         params.ikd_delete_param, params.ikd_balance_param, params.ikd_downsample_size);
 }
 
-// ── addFrame ──────────────────────────────────────────────────────────────────
-
 std::optional<core::KeyFrame::SharedPtr> IkdTreeMapBuilder::addFrame(
     const core::LidarFrame::SharedPtr& frame) {
     const auto& cloud_body = frame->features.raw_deskewed;
@@ -20,18 +18,15 @@ std::optional<core::KeyFrame::SharedPtr> IkdTreeMapBuilder::addFrame(
 
     const Eigen::Isometry3d& T_map_body = frame->matched_result.pose;
 
-    // 1. 將 body-frame 點雲轉到 world frame，插入 ikd-Tree
     size_t n_points = cloud_body->size();
     KD_TREE<core::PointXYZIRT>::PointVector points_world(n_points);
 
-// 2. 使用索引 i 進行並行處理
 #pragma omp parallel for num_threads(4) schedule(dynamic)
     for (size_t i = 0; i < n_points; ++i) {
         const auto& p = (*cloud_body)[i];
         Eigen::Vector3d pw = T_map_body * Eigen::Vector3d(p.x, p.y, p.z);
 
-        // 透過索引寫入，互不干擾
-        points_world[i] = p;  // 複製其餘屬性
+        points_world[i] = p;
         points_world[i].x = static_cast<float>(pw.x());
         points_world[i].y = static_cast<float>(pw.y());
         points_world[i].z = static_cast<float>(pw.z());
@@ -66,10 +61,7 @@ std::optional<core::KeyFrame::SharedPtr> IkdTreeMapBuilder::addFrame(
                               std::make_move_iterator(points_corrected.end()));
     }
 
-    // 2. 判斷是否為 keyframe（僅供後端 pose graph 使用，與 ikd-Tree 插入無關）
     if (!isNewKeyframe(T_map_body)) return std::nullopt;
-
-    // 3. 建立 KeyFrame（cloud 保存 body frame，不轉換）
 
     {
         std::unique_lock<std::shared_mutex> lock(keyframe_mutex_);
@@ -99,7 +91,7 @@ void IkdTreeMapBuilder::addKeyFrame(const core::KeyFrame::SharedPtr& keyframe) {
         pt.z = static_cast<float>(pw.z());
         points_world.push_back(pt);
     }
-    ikd_tree_->Add_Points(points_world, true);  // downsample_on = true
+    ikd_tree_->Add_Points(points_world, true);
 
     {
         std::unique_lock<std::shared_mutex> lock(keyframe_mutex_);
@@ -120,8 +112,6 @@ void IkdTreeMapBuilder::clearMap() {
     next_keyframe_id_ = 0;
 }
 
-// ── queryNearestPoints ────────────────────────────────────────────────────────
-
 std::vector<core::NearestPointResult> IkdTreeMapBuilder::queryNearestPoints(
     const core::PointCloudIRTPtr& query_cloud, const Eigen::Isometry3d& T_map_lidar, int k) const {
     std::vector<core::NearestPointResult> results;
@@ -133,7 +123,6 @@ std::vector<core::NearestPointResult> IkdTreeMapBuilder::queryNearestPoints(
     if (!local_tree) return results;
 
     for (const auto& p : *query_cloud) {
-        // 將 query 點轉到 map frame
         Eigen::Vector3d p_map = T_map_lidar * Eigen::Vector3d(p.x, p.y, p.z);
         core::PointXYZIRT query_pt;
         query_pt.x = static_cast<float>(p_map.x());
@@ -142,7 +131,6 @@ std::vector<core::NearestPointResult> IkdTreeMapBuilder::queryNearestPoints(
 
         KD_TREE<core::PointXYZIRT>::PointVector neighbors;
         std::vector<float> distances;
-        // const_cast 是必要的：ikd-Tree 的 Nearest_Search 內部會拿 mutex，但邏輯上不修改地圖
         const_cast<KD_TREE<core::PointXYZIRT>*>(local_tree.get())
             ->Nearest_Search(query_pt, k, neighbors, distances, params_.max_search_dist);
 
@@ -156,8 +144,6 @@ std::vector<core::NearestPointResult> IkdTreeMapBuilder::queryNearestPoints(
 
     return results;
 }
-
-// ── updateKeyframePoses ───────────────────────────────────────────────────────
 
 void IkdTreeMapBuilder::updateKeyframePoses(
     const std::vector<std::pair<uint64_t, Eigen::Isometry3d>>& id_pose_pairs) {
@@ -230,10 +216,10 @@ void IkdTreeMapBuilder::updateKeyframePoses(
         KD_TREE<core::PointXYZIRT>::PointVector catch_up_points;
         {
             std::lock_guard<std::mutex> lock(increment_mutex_);
-            catch_up_points.swap(ikd_increment_);  // 快速交換，清空桶子
+            catch_up_points.swap(ikd_increment_);
         }
         if (!catch_up_points.empty()) {
-            temp_ikd_tree_->Add_Points(catch_up_points, true);  // 這裡耗時，但不卡前端
+            temp_ikd_tree_->Add_Points(catch_up_points, true);
         }
     }
 }
@@ -253,8 +239,6 @@ void IkdTreeMapBuilder::updateMap() {
     last_pending_correction_.reset();
     temp_ikd_tree_.reset();
 }
-
-// ── Keyframe 查詢 ─────────────────────────────────────────────────────────────
 
 std::vector<core::KeyFrame::SharedPtr> IkdTreeMapBuilder::getAllKeyframes() const {
     std::shared_lock<std::shared_mutex> lock(keyframe_mutex_);
@@ -280,9 +264,6 @@ core::PointCloudIRTPtr IkdTreeMapBuilder::getGlobalMap() const {
         return std::make_shared<core::PointCloudIRT>();
 
     KD_TREE<core::PointXYZIRT>::PointVector all_points;
-
-    // 2. 使用 const_cast 轉為原始指標並呼叫 flatten
-    // 注意：ikd_tree_ 是 shared_ptr，我們用 local_tree.get() 拿到指標
     const_cast<KD_TREE<core::PointXYZIRT>*>(local_tree.get())
         ->flatten(local_tree->Root_Node, all_points, NOT_RECORD);
 
@@ -292,8 +273,6 @@ core::PointCloudIRTPtr IkdTreeMapBuilder::getGlobalMap() const {
     return cloud;
 }
 
-// ── 私有工具函式 ──────────────────────────────────────────────────────────────
-
 bool IkdTreeMapBuilder::isNewKeyframe(const Eigen::Isometry3d& pose) const {
     std::shared_lock<std::shared_mutex> lock(keyframe_mutex_);
     if (keyframes_.empty()) return true;
@@ -302,7 +281,6 @@ bool IkdTreeMapBuilder::isNewKeyframe(const Eigen::Isometry3d& pose) const {
     double dist = (pose.translation() - last_pose.translation()).norm();
     if (dist >= params_.keyframe_distance_threshold) return true;
 
-    // 旋轉角差：trace(R1^T * R2) = 1 + 2*cos(θ) → θ = acos((trace-1)/2)
     Eigen::Matrix3d dR = last_pose.linear().transpose() * pose.linear();
     double cos_angle = std::clamp((dR.trace() - 1.0) / 2.0, -1.0, 1.0);
     double angle = std::acos(cos_angle);
@@ -312,7 +290,6 @@ bool IkdTreeMapBuilder::isNewKeyframe(const Eigen::Isometry3d& pose) const {
 core::NearestPointResult IkdTreeMapBuilder::fitPlane(
     const KD_TREE<core::PointXYZIRT>::PointVector& neighbors,
     const Eigen::Vector3d& query_point_in_map) const {
-    // PCA 平面擬合
     Eigen::Vector3d centroid = Eigen::Vector3d::Zero();
     for (const auto& p : neighbors) centroid += Eigen::Vector3d(p.x, p.y, p.z);
     centroid /= static_cast<double>(neighbors.size());
@@ -326,8 +303,6 @@ core::NearestPointResult IkdTreeMapBuilder::fitPlane(
     Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> solver(cov);
     const auto& eigenvalues = solver.eigenvalues();
 
-    // 最小特徵值對應的特徵向量即為平面法向量
-    // 有效平面條件：λ₀ << λ₁ ≈ λ₂（薄平面結構）
     if (eigenvalues(0) > params_.plane_valid_threshold * eigenvalues(2)) {
         return {false, {}, {}, {}};
     }

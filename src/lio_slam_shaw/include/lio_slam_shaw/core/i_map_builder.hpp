@@ -10,7 +10,6 @@
 
 namespace lio_slam_shaw::core {
 
-// 儲存於 MapBuilder 中的 keyframe 資料
 struct KeyFrame {
     using SharedPtr = std::shared_ptr<KeyFrame>;
 
@@ -18,7 +17,7 @@ struct KeyFrame {
     Timestamp timestamp;
     Eigen::Isometry3d pose = Eigen::Isometry3d::Identity();  // 全局地圖座標系
     FeatureSet features;
-    PointCloudIRTPtr cloud;  // deskewed 點雲
+    PointCloudIRTPtr cloud;
     core::ScanMatchResult matched_result;
 };
 
@@ -37,23 +36,15 @@ public:
 
     virtual ~IMapBuilder() = default;
 
-    // 每幀都呼叫：內部 (1) 將點雲插入 ikd-Tree；(2) 判斷是否為 keyframe
-    // 是 keyframe 才加入並回傳；否則回傳 nullopt
-
     virtual std::optional<KeyFrame::SharedPtr> addFrame(const LidarFrame::SharedPtr& frame) = 0;
     virtual void addKeyFrame(const KeyFrame::SharedPtr& keyframe) = 0;
 
     virtual void clearMap() = 0;
 
-    // scan matcher 在每次 GN/LM 迭代時呼叫，以當前位姿估計查詢 k 個最近鄰
-    // T_map_lidar: 將 body/lidar 系點雲變換到地圖座標系的當前估計
     virtual std::vector<NearestPointResult> queryNearestPoints(const PointCloudIRTPtr& query_cloud,
                                                                const Eigen::Isometry3d& T_map_lidar,
                                                                int k = 5) const = 0;
 
-    // 後端全局優化完後，批次更新所有歷史 keyframe 的 pose
-    // 實作需同時：(1) 更新 keyframe->pose；(2) 清空並重建 ikd-Tree（world frame 座標全部過時）
-    // KeyFrame::cloud 是 body frame，不需要修改
     virtual void updateKeyframePoses(
         const std::vector<std::pair<uint64_t, Eigen::Isometry3d>>& id_pose_pairs) = 0;
 

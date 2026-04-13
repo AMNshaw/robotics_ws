@@ -34,7 +34,7 @@ void FrontEnd::feed_imu(const ImuData& imu) {
 NavState FrontEnd::getLatestNavState() const {
     std::lock_guard<std::mutex> lock(pipeline_mtx_);
     auto state = imu_preintegrator_->getLatestNavState();
-    state.pose = T_map_odom_ * state.pose;  // odometry → map frame
+    state.pose = T_map_odom_ * state.pose;
     return state;
 }
 
