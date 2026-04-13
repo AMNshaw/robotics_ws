@@ -21,12 +21,11 @@ struct KeyFrame {
     core::ScanMatchResult matched_result;
 };
 
-// queryNearestPoints 的單點查詢結果，供 scan matcher 建構 point-to-plane 殘差使用
 struct NearestPointResult {
-    bool valid = false;            // 是否找到足夠鄰近點且平面擬合條件良好
-    Eigen::Vector3d point_in_map;  // query 點在地圖座標系下的位置
-    Eigen::Vector3d normal;        // 擬合平面法向量（指向外）
-    Eigen::Vector3d centroid;      // k 個鄰近點的重心（用於計算點到面距離）
+    bool valid = false;
+    Eigen::Vector3d point_in_map;
+    Eigen::Vector3d normal;
+    Eigen::Vector3d centroid;
 };
 
 class IMapBuilder {
@@ -50,12 +49,10 @@ public:
 
     virtual void updateMap() = 0;
 
-    // 供 loop closure detector 查詢歷史 keyframe
     virtual std::vector<KeyFrame::SharedPtr> getAllKeyframes() const = 0;
     virtual std::optional<KeyFrame::SharedPtr> getKeyframe(uint64_t id) const = 0;
     virtual std::optional<KeyFrame::SharedPtr> getLatestKeyframe() const = 0;
 
-    // 用於可視化全局地圖
     virtual PointCloudIRTPtr getGlobalMap() const = 0;
 };
 

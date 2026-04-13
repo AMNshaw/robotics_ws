@@ -7,7 +7,6 @@
 namespace lio_slam_shaw::lidar_preprocessor {
 
 struct ImuDeskewPreprocessorParams {
-    // 0 或負值代表不做 downsample
     float voxel_leaf_size = 0.2f;
 };
 

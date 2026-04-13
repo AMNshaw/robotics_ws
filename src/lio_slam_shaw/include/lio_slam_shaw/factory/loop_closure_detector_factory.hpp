@@ -11,9 +11,6 @@ namespace lio_slam_shaw::factory {
 
 class LoopClosureDetectorFactory {
 public:
-    // type 由 ROS param "loop_closure_detector_type" 控制
-    // 支援: "icp" (預設), "ikd_tree"
-    // scan_matcher 僅 "ikd_tree" 使用，"icp" 可傳 nullptr
     static core::ILoopClosureDetector::SharedPtr create(
         rclcpp::Node::SharedPtr node, core::IMapBuilder::SharedPtr map_builder = nullptr);
 };

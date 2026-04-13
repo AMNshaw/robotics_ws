@@ -14,10 +14,6 @@ public:
 
     virtual ~IFeatureExtractor() = default;
 
-    // 從 deskewed LidarData 提取特徵，回傳 FeatureSet
-    // 實作可選擇：
-    //   - Passthrough：raw_deskewed 直接 alias LidarData::cloud（zero-copy，供 ikd-Tree 使用）
-    //   - LOAM-style：從點雲提取 edge / surf 幾何特徵
     virtual FeatureSet extract(const LidarData& deskewed_lidar) = 0;
 };
 

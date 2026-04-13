@@ -45,7 +45,6 @@ core::ILoopClosureDetector::SharedPtr LoopClosureDetectorFactory::create(
     }
 
     if (type == "ikd_tree") {
-        // building scan matcher for this instance
         scan_matcher::IkdTreeScanMatcherParams scan_matcher_params;
         scan_matcher_params.k_neighbors = node->declare_parameter<int>(
             "loop_closure.scan_matcher.k_neighbors", scan_matcher_params.k_neighbors);
@@ -62,17 +61,15 @@ core::ILoopClosureDetector::SharedPtr LoopClosureDetectorFactory::create(
             "loop_closure.scan_matcher.T_body_lidar_trans", scan_matcher_params.T_body_lidar_trans);
         scan_matcher_params.T_body_lidar_rot = node->declare_parameter<std::vector<double>>(
             "loop_closure.scan_matcher.T_body_lidar_rot", scan_matcher_params.T_body_lidar_rot);
-        auto scan_matcher =
-            std::make_shared<scan_matcher::IkdTreeScanMatcher>(map_builder, scan_matcher_params);
 
-        // building loop closure detector parameters
         IkdTreeLoopClosureDetectorParams loop_closure_params;
         loop_closure_params.search_radius =
             node->declare_parameter<double>("loop_closure.search_radius", 15.0);
         loop_closure_params.min_time_gap_sec =
             node->declare_parameter<double>("loop_closure.min_time_gap_sec", 30.0);
 
-        return std::make_shared<IkdTreeLoopClosureDetector>(scan_matcher, loop_closure_params);
+        return std::make_shared<IkdTreeLoopClosureDetector>(scan_matcher_params,
+                                                            loop_closure_params);
     }
 
     throw std::runtime_error("LoopClosureDetectorFactory: unknown type '" + type + "'");

@@ -30,13 +30,11 @@ private:
     ImuData interpolateImu(const ImuData& imu1, const ImuData& imu2, const Timestamp& target_time);
 
     std::deque<ImuData> imu_queue_;
-    std::deque<LidarData> lidar_queue_;  // LidarData 封裝了點雲與起訖時間
+    std::deque<LidarData> lidar_queue_;
 
-    // 上一筆進入 queue 的時間戳，用於 monotonic 過濾
     Timestamp last_imu_time_{};
     Timestamp last_lidar_time_{};
 
-    // 執行緒鎖
     mutable std::mutex imu_mutex_;
     mutable std::mutex lidar_mutex_;
 };

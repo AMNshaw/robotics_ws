@@ -15,8 +15,6 @@ public:
     IScanPreprocessor() = default;
     virtual ~IScanPreprocessor() = default;
 
-    // nav_state_snapshot: 由呼叫者從 IImuPreintegrator::getNavStateQueueSnapshot() 取得
-    // deskew 實作用此做插值補償，passthrough 實作忽略它
     virtual LidarData processCloud(const std::vector<NavState>& nav_state_snapshot,
                                    const LidarData& raw_data) = 0;
 };

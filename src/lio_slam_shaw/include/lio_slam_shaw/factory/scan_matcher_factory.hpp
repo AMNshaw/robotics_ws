@@ -10,7 +10,6 @@ namespace lio_slam_shaw::factory {
 
 class ScanMatcherFactory {
 public:
-    // Frontend 用：快速收斂，params 前綴 "scan_matcher."
     static core::IScanMatcher::SharedPtr create(rclcpp::Node::SharedPtr node,
                                                 core::IMapBuilder::SharedPtr map_builder);
 };

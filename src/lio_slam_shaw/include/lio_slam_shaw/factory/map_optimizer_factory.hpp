@@ -9,8 +9,6 @@ namespace lio_slam_shaw::factory {
 
 class MapOptimizerFactory {
 public:
-    // type 由 ROS param "map_optimizer_type" 控制
-    // 支援: "gtsam" (預設)
     static core::IMapOptimizer::SharedPtr create(rclcpp::Node::SharedPtr node);
 };
 

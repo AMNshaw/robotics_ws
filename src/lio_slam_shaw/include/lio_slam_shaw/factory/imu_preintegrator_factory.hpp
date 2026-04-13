@@ -9,8 +9,6 @@ namespace lio_slam_shaw::factory {
 
 class ImuPreintegratorFactory {
 public:
-    // type 由 ROS param "imu_preintegrator_type" 控制
-    // 支援: "gtsam" (預設)
     static core::IImuPreintegrator::SharedPtr create(rclcpp::Node::SharedPtr node);
 };
 

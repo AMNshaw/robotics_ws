@@ -4,7 +4,6 @@ namespace lio_slam_shaw::core {
 
 void SensorDataManager::addImuData(const ImuData& imu) {
     std::lock_guard<std::mutex> lock(imu_mutex_);
-    // Monotonic guard：拒絕時間戳倒退或重複的 IMU 資料
     if (imu.timestamp <= last_imu_time_) {
         return;
     }
@@ -14,8 +13,7 @@ void SensorDataManager::addImuData(const ImuData& imu) {
 
 void SensorDataManager::addLidarData(const LidarData& lidar) {
     std::lock_guard<std::mutex> lock(lidar_mutex_);
-    // Monotonic guard：以 time_end 作為代表時間戳（最後一顆點），
-    // 拒絕時間戳倒退或重複的 LiDAR 幀
+
     if (lidar.time_end <= last_lidar_time_) {
         return;
     }
@@ -53,32 +51,27 @@ bool SensorDataManager::getSyncedData(LidarData& out_lidar, std::vector<ImuData>
         return false;
     }
 
-    // 清理過期資料，確保 imu_queue_[0] 是在 lidar_start 之前或剛好等於
     while (imu_queue_.size() > 1 && imu_queue_[1].timestamp <= lidar_start) {
         imu_queue_.pop_front();
     }
 
     out_imu_batch.clear();
 
-    // 遍歷並精準切割/插值
     for (size_t i = 0; i < imu_queue_.size() - 1; ++i) {
         const auto& imu0 = imu_queue_[i];
         const auto& imu1 = imu_queue_[i + 1];
 
-        // 1. 處理頭部插值：跨越 lidar_start
         if (imu0.timestamp <= lidar_start && imu1.timestamp > lidar_start) {
             out_imu_batch.push_back(interpolateImu(imu0, imu1, lidar_start));
         }
 
-        // 2. 收集完美落在區間內的中間點
         if (imu1.timestamp > lidar_start && imu1.timestamp < lidar_end) {
             out_imu_batch.push_back(imu1);
         }
 
-        // 3. 處理尾部插值：跨越 lidar_end
         if (imu0.timestamp < lidar_end && imu1.timestamp >= lidar_end) {
             out_imu_batch.push_back(interpolateImu(imu0, imu1, lidar_end));
-            break;  // 收集完畢，提早結束迴圈
+            break;
         }
     }
 
@@ -99,15 +92,12 @@ ImuData SensorDataManager::interpolateImu(const ImuData& imu1, const ImuData& im
                                           const Timestamp& target_time) {
     double dt = getDeltaSec(imu1.timestamp, imu2.timestamp);
 
-    // 防呆：如果時間差太小（可能硬體時間戳重複），直接回傳第一筆
     if (dt < 1e-6) {
         return imu1;
     }
 
-    // 計算比例： r = (t_target - t1) / (t2 - t1)
     double ratio = getDeltaSec(imu1.timestamp, target_time) / dt;
 
-    // 對加速度與角速度進行線性插值
     Eigen::Vector3d interp_acc = imu1.acc + ratio * (imu2.acc - imu1.acc);
     Eigen::Vector3d interp_gyr = imu1.gyr + ratio * (imu2.gyr - imu1.gyr);
 

@@ -12,7 +12,6 @@ ImuDeskewPreprocessor::ImuDeskewPreprocessor(const ImuDeskewPreprocessorParams& 
     : params_(params) {}
 namespace {
 
-// 從已排序的 NavState snapshot 中插値指定時刻的狀態（無鎖）
 std::optional<core::NavState> interpolateNavState(const std::vector<core::NavState>& snapshot,
                                                   const core::Timestamp& t) {
     if (snapshot.empty()) return std::nullopt;
@@ -61,7 +60,6 @@ core::LidarData ImuDeskewPreprocessor::processCloud(const std::vector<core::NavS
     auto deskewed = std::make_shared<core::PointCloudIRT>();
     deskewed->resize(n);
 
-    // 並行補償每個點（snapshot 由呼叫者傳入，無需持鎖）
 #pragma omp parallel for schedule(dynamic, 64) default(none) \
     shared(snapshot, raw_cloud, deskewed, T_0_inv, n)
     for (int i = 0; i < n; ++i) {
@@ -90,7 +88,6 @@ core::LidarData ImuDeskewPreprocessor::processCloud(const std::vector<core::NavS
     core::LidarData result = raw_cloud;
     result.cloud = deskewed;
 
-    // VoxelGrid downsample（deskew 完後在 body frame 做）
     if (params_.voxel_leaf_size > 0.0f) {
         pcl::VoxelGrid<core::PointXYZIRT> voxel;
         voxel.setLeafSize(params_.voxel_leaf_size, params_.voxel_leaf_size,

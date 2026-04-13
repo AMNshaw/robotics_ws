@@ -70,7 +70,6 @@ private:
     std::unique_ptr<gtsam::ISAM2> optimizer_;
     uint64_t graph_node_index_ = 0;
 
-    // GTSAM 參數
     std::shared_ptr<gtsam::PreintegrationParams> gtsam_preint_params_;
     gtsam::noiseModel::Diagonal::shared_ptr correction_noise_;
     gtsam::noiseModel::Diagonal::shared_ptr correction_noise_large_;
