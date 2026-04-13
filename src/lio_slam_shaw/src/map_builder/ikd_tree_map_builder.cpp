@@ -148,11 +148,6 @@ std::vector<core::NearestPointResult> IkdTreeMapBuilder::queryNearestPoints(
 void IkdTreeMapBuilder::updateKeyframePoses(
     const std::vector<std::pair<uint64_t, Eigen::Isometry3d>>& id_pose_pairs) {
     {
-        std::lock_guard<std::mutex> lock(increment_mutex_);
-        ikd_increment_.clear();
-    }
-
-    {
         std::shared_lock<std::shared_mutex> lock(keyframe_mutex_);
         if (!id_pose_pairs.empty()) {
             const auto& [last_id, new_pose] = id_pose_pairs.back();
@@ -166,7 +161,12 @@ void IkdTreeMapBuilder::updateKeyframePoses(
             }
         }
     }
-    is_updating_map_.store(true);
+
+    {
+        std::lock_guard<std::mutex> lock(increment_mutex_);
+        ikd_increment_.clear();
+        is_updating_map_.store(true, std::memory_order_release);
+    }
 
     {
         std::unique_lock<std::shared_mutex> lock(keyframe_mutex_);
@@ -182,12 +182,15 @@ void IkdTreeMapBuilder::updateKeyframePoses(
     size_t total_points = 0;
     {
         std::shared_lock<std::shared_mutex> lock(keyframe_mutex_);
-        for (const auto& kf : keyframes_) total_points += kf->cloud->size();
+        for (const auto& kf : keyframes_) {
+            if (kf->cloud) total_points += kf->cloud->size();
+        }
         all_points.resize(total_points);
 
         size_t current_pos = 0;
         for (const auto& kf : keyframes_) {
             const auto& cloud = kf->cloud;
+            if (!cloud || cloud->empty()) continue;
             const auto& T = kf->pose;
             size_t kf_size = cloud->size();
 #pragma omp parallel for num_threads(4)
@@ -225,6 +228,8 @@ void IkdTreeMapBuilder::updateKeyframePoses(
 }
 
 void IkdTreeMapBuilder::updateMap() {
+    if (!temp_ikd_tree_) return;
+
     {
         std::lock_guard<std::mutex> lock(increment_mutex_);
         if (!ikd_increment_.empty()) {

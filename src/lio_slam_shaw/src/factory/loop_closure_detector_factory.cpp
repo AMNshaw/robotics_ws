@@ -8,7 +8,7 @@
 namespace lio_slam_shaw::factory {
 
 core::ILoopClosureDetector::SharedPtr LoopClosureDetectorFactory::create(
-    rclcpp::Node::SharedPtr node, core::IMapBuilder::SharedPtr map_builder) {
+    rclcpp::Node::SharedPtr node) {
     const std::string type =
         node->declare_parameter<std::string>("loop_closure_detector_type", "icp");
 

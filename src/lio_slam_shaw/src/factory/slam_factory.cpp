@@ -29,7 +29,7 @@ core::SlamProcessor::SharedPtr SlamFactory::create(rclcpp::Node::SharedPtr node)
         sensor_data_manager, scan_preprocessor, feature_extractor, scan_matcher, imu_preintegrator);
 
     auto map_optimizer = MapOptimizerFactory::create(node);
-    auto loop_closure_detector = LoopClosureDetectorFactory::create(node, map_builder);
+    auto loop_closure_detector = LoopClosureDetectorFactory::create(node);
 
     auto backend =
         std::make_shared<core::BackEnd>(map_builder, map_optimizer, loop_closure_detector);
