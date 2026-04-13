@@ -102,9 +102,10 @@ Eigen::Isometry3d IkdTreeScanMatcher::applyLieUpdate(const Eigen::Isometry3d& T,
 Eigen::Matrix<double, 6, 6> IkdTreeScanMatcher::computeCovariance(
     const Eigen::Matrix<double, 6, 6>& H, int /*n_valid_points*/) {
     Eigen::Matrix<double, 6, 6> cov;
-    bool invertible = false;
-    H.computeInverseWithCheck(cov, invertible);
-    if (!invertible) {
+    Eigen::FullPivLU<Eigen::Matrix<double, 6, 6>> lu(H);
+    if (lu.isInvertible()) {
+        cov = lu.inverse();
+    } else {
         cov = Eigen::Matrix<double, 6, 6>::Identity() * 1e-2;
     }
     return cov;

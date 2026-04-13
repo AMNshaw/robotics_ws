@@ -8,6 +8,7 @@
 #include <gtsam/nonlinear/NonlinearFactorGraph.h>
 #include <gtsam/nonlinear/Values.h>
 
+#include <boost/shared_ptr.hpp>
 #include <chrono>
 #include <deque>
 #include <memory>
@@ -70,7 +71,7 @@ private:
     std::unique_ptr<gtsam::ISAM2> optimizer_;
     uint64_t graph_node_index_ = 0;
 
-    std::shared_ptr<gtsam::PreintegrationParams> gtsam_preint_params_;
+    boost::shared_ptr<gtsam::PreintegrationParams> gtsam_preint_params_;
     gtsam::noiseModel::Diagonal::shared_ptr correction_noise_;
     gtsam::noiseModel::Diagonal::shared_ptr correction_noise_large_;
     gtsam::Vector noise_model_between_bias_;

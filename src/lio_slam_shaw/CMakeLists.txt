@@ -139,28 +139,28 @@ ament_target_dependencies(factory
   rclcpp
 )
 
-add_executable(slam_node
-  src/slam_node.cpp
-)
-target_link_libraries(slam_node
-  factory
-  core
-)
-ament_target_dependencies(slam_node
-  rclcpp
-  std_msgs
-  sensor_msgs
-  nav_msgs
-  geometry_msgs
-  tf2
-  tf2_ros
-  tf2_eigen
-  pcl_conversions
-)
+# add_executable(slam_node
+#   src/slam_node.cpp
+# )
+# target_link_libraries(slam_node
+#   factory
+#   core
+# )
+# ament_target_dependencies(slam_node
+#   rclcpp
+#   std_msgs
+#   sensor_msgs
+#   nav_msgs
+#   geometry_msgs
+#   tf2
+#   tf2_ros
+#   tf2_eigen
+#   pcl_conversions
+# )
 
-install(TARGETS slam_node
-  DESTINATION lib/${PROJECT_NAME}
-)
+# install(TARGETS slam_node
+#   DESTINATION lib/${PROJECT_NAME}
+# )
 
 
 

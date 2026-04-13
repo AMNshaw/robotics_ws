@@ -104,7 +104,7 @@ void GtsamImuPreintegrator::updateBiasAndRepropagateImus(
         return;
     }
 
-    if (graph_node_index_ == params_.marginalization_threshold_) {
+    if (graph_node_index_ == params_.marginalization_threshold) {
         marginalizeOldFactors();
         graph_node_index_ = 1;
     }
