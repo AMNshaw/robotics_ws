@@ -51,7 +51,21 @@ SlamNode::SlamNode(const rclcpp::NodeOptions& options) : Node("lio_slam_shaw_nod
         throw std::runtime_error("Invalid Lidar Type");
     }
 
+    viz_thread_ = std::thread([this]() {
+        RCLCPP_INFO(this->get_logger(), "Visualizer thread started!");
+        this->visualizationThread();
+    });
+
     RCLCPP_INFO(get_logger(), "LIO-SLAM-Shaw Node initialized.");
+}
+
+SlamNode::~SlamNode() {
+    RCLCPP_INFO(get_logger(), "Shutting down LIO-SLAM-Shaw Node...");
+    rclcpp::shutdown();
+    if (viz_thread_.joinable()) {
+        viz_thread_.join();
+    }
+    RCLCPP_INFO(get_logger(), "LIO-SLAM-Shaw Node shut down.");
 }
 
 void SlamNode::imuCallback(const sensor_msgs::msg::Imu::SharedPtr msg) {
@@ -80,6 +94,23 @@ void SlamNode::ousterLidarCallback(const sensor_msgs::msg::PointCloud2::SharedPt
 void SlamNode::livoxLidarCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
     auto lidar_data = lidar_msg_adaptor::convertLivox(msg);
     slam_processor_->feedLidar(lidar_data);
+}
+
+void SlamNode::visualizationThread() {
+    while (rclcpp::ok()) {
+        std::unique_lock<std::mutex> lock(viz_mutex_);
+        viz_cv_.wait(lock, [this] { return !viz_queue_.empty() || !rclcpp::ok(); });
+
+        if (!rclcpp::ok()) {
+            break;
+        }
+
+        auto viz_data = viz_queue_.front();
+        viz_queue_.pop_front();
+        lock.unlock();
+
+        // Publish odometry or visualization data here using viz_data
+    }
 }
 
 }  // namespace lio_slam_shaw

@@ -8,7 +8,7 @@ BackEnd::BackEnd(IMapBuilder::SharedPtr map_builder, IMapOptimizer::SharedPtr ma
       map_optimizer_(std::move(map_optimizer)),
       loop_closure_detector_(std::move(loop_closure_detector)) {}
 
-void BackEnd::processKeyframe(const KeyFrame::SharedPtr& keyframe) {
+void BackEnd::processKeyframe(const Keyframe::SharedPtr& keyframe) {
     map_optimizer_->addKeyframe(keyframe->id, keyframe->matched_result);
 
     auto loop_opt = loop_closure_detector_->detect(keyframe, map_builder_);

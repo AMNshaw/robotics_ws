@@ -59,7 +59,7 @@ struct ImuData {
 };
 
 struct FeatureSet {
-    PointCloudIRTPtr raw_deskewed;
+    PointCloudIRTConstPtr raw_deskewed;
     PointCloudIRTPtr edge;
     PointCloudIRTPtr surf;
     FeatureSet()
@@ -75,6 +75,13 @@ struct ScanMatchResult {
     bool is_converged = false;
     bool is_degenerate = false;
     double fitness_score = 0.0;
+};
+
+struct VisualizationData {
+    Timestamp timestamp;
+    Eigen::Isometry3d pose_odom;
+    Eigen::Isometry3d T_map_odom;
+    PointCloudIRTPtr scan;
 };
 
 }  // namespace lio_slam_shaw::core

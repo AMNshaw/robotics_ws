@@ -11,7 +11,7 @@ IkdTreeMapBuilder::IkdTreeMapBuilder(const IkdTreeMapBuilderParams& params) : pa
         params.ikd_delete_param, params.ikd_balance_param, params.ikd_downsample_size);
 }
 
-std::optional<core::KeyFrame::SharedPtr> IkdTreeMapBuilder::addFrame(
+std::optional<core::Keyframe::SharedPtr> IkdTreeMapBuilder::addFrame(
     const core::LidarFrame::SharedPtr& frame) {
     const auto& cloud_body = frame->features.raw_deskewed;
     if (!cloud_body || cloud_body->empty()) return std::nullopt;
@@ -65,12 +65,9 @@ std::optional<core::KeyFrame::SharedPtr> IkdTreeMapBuilder::addFrame(
 
     {
         std::unique_lock<std::shared_mutex> lock(keyframe_mutex_);
-        auto kf = std::make_shared<core::KeyFrame>();
-        kf->id = next_keyframe_id_++;
-        kf->timestamp = frame->timestamp;
-        kf->pose = T_map_body;
-        kf->features = frame->features;
-        kf->cloud = cloud_body;
+        auto kf =
+            std::make_shared<core::Keyframe>(next_keyframe_id_++, frame->timestamp, T_map_body,
+                                             frame->features, cloud_body, frame->matched_result);
 
         keyframe_index_[kf->id] = keyframes_.size();
         keyframes_.push_back(kf);
@@ -78,12 +75,12 @@ std::optional<core::KeyFrame::SharedPtr> IkdTreeMapBuilder::addFrame(
     }
 }
 
-void IkdTreeMapBuilder::addKeyFrame(const core::KeyFrame::SharedPtr& keyframe) {
-    if (!keyframe || !keyframe->cloud || keyframe->cloud->empty()) return;
+void IkdTreeMapBuilder::addKeyFrame(const core::Keyframe::SharedPtr& keyframe) {
+    if (!keyframe || !keyframe->cloud_body || keyframe->cloud_body->empty()) return;
 
     KD_TREE<core::PointXYZIRT>::PointVector points_world;
-    points_world.reserve(keyframe->cloud->size());
-    for (const auto& p : *keyframe->cloud) {
+    points_world.reserve(keyframe->cloud_body->size());
+    for (const auto& p : *keyframe->cloud_body) {
         Eigen::Vector3d pw = keyframe->pose * Eigen::Vector3d(p.x, p.y, p.z);
         core::PointXYZIRT pt = p;
         pt.x = static_cast<float>(pw.x());
@@ -113,7 +110,8 @@ void IkdTreeMapBuilder::clearMap() {
 }
 
 std::vector<core::NearestPointResult> IkdTreeMapBuilder::queryNearestPoints(
-    const core::PointCloudIRTPtr& query_cloud, const Eigen::Isometry3d& T_map_lidar, int k) const {
+    const core::PointCloudIRTConstPtr& query_cloud, const Eigen::Isometry3d& T_map_lidar,
+    int k) const {
     std::vector<core::NearestPointResult> results;
     if (!query_cloud || query_cloud->empty()) return results;
     results.reserve(query_cloud->size());
@@ -183,13 +181,13 @@ void IkdTreeMapBuilder::updateKeyframePoses(
     {
         std::shared_lock<std::shared_mutex> lock(keyframe_mutex_);
         for (const auto& kf : keyframes_) {
-            if (kf->cloud) total_points += kf->cloud->size();
+            if (kf->cloud_body) total_points += kf->cloud_body->size();
         }
         all_points.resize(total_points);
 
         size_t current_pos = 0;
         for (const auto& kf : keyframes_) {
-            const auto& cloud = kf->cloud;
+            const auto& cloud = kf->cloud_body;
             if (!cloud || cloud->empty()) continue;
             const auto& T = kf->pose;
             size_t kf_size = cloud->size();
@@ -245,19 +243,19 @@ void IkdTreeMapBuilder::updateMap() {
     temp_ikd_tree_.reset();
 }
 
-std::vector<core::KeyFrame::SharedPtr> IkdTreeMapBuilder::getAllKeyframes() const {
+std::vector<core::Keyframe::SharedPtr> IkdTreeMapBuilder::getAllKeyframes() const {
     std::shared_lock<std::shared_mutex> lock(keyframe_mutex_);
     return keyframes_;
 }
 
-std::optional<core::KeyFrame::SharedPtr> IkdTreeMapBuilder::getKeyframe(uint64_t id) const {
+std::optional<core::Keyframe::SharedPtr> IkdTreeMapBuilder::getKeyframe(uint64_t id) const {
     std::shared_lock<std::shared_mutex> lock(keyframe_mutex_);
     auto it = keyframe_index_.find(id);
     if (it == keyframe_index_.end()) return std::nullopt;
     return keyframes_[it->second];
 }
 
-std::optional<core::KeyFrame::SharedPtr> IkdTreeMapBuilder::getLatestKeyframe() const {
+std::optional<core::Keyframe::SharedPtr> IkdTreeMapBuilder::getLatestKeyframe() const {
     std::shared_lock<std::shared_mutex> lock(keyframe_mutex_);
     if (keyframes_.empty()) return std::nullopt;
     return keyframes_.back();

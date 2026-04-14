@@ -10,15 +10,25 @@
 
 namespace lio_slam_shaw::core {
 
-struct KeyFrame {
-    using SharedPtr = std::shared_ptr<KeyFrame>;
+struct Keyframe {
+    using SharedPtr = std::shared_ptr<Keyframe>;
 
     uint64_t id;
     Timestamp timestamp;
     Eigen::Isometry3d pose = Eigen::Isometry3d::Identity();  // 全局地圖座標系
     FeatureSet features;
-    PointCloudIRTPtr cloud;
+    PointCloudIRTConstPtr cloud_body;
     core::ScanMatchResult matched_result;
+
+    Keyframe(uint64_t id, const Timestamp& timestamp, const Eigen::Isometry3d& pose,
+             const FeatureSet& features, PointCloudIRTConstPtr cloud_body,
+             const core::ScanMatchResult& matched_result)
+        : id(id),
+          timestamp(timestamp),
+          pose(pose),
+          features(features),
+          cloud_body(cloud_body),
+          matched_result(matched_result) {}
 };
 
 struct NearestPointResult {
@@ -35,23 +45,23 @@ public:
 
     virtual ~IMapBuilder() = default;
 
-    virtual std::optional<KeyFrame::SharedPtr> addFrame(const LidarFrame::SharedPtr& frame) = 0;
-    virtual void addKeyFrame(const KeyFrame::SharedPtr& keyframe) = 0;
+    virtual std::optional<Keyframe::SharedPtr> addFrame(const LidarFrame::SharedPtr& frame) = 0;
+    virtual void addKeyFrame(const Keyframe::SharedPtr& keyframe) = 0;
 
     virtual void clearMap() = 0;
 
-    virtual std::vector<NearestPointResult> queryNearestPoints(const PointCloudIRTPtr& query_cloud,
-                                                               const Eigen::Isometry3d& T_map_lidar,
-                                                               int k = 5) const = 0;
+    virtual std::vector<NearestPointResult> queryNearestPoints(
+        const PointCloudIRTConstPtr& query_cloud, const Eigen::Isometry3d& T_map_lidar,
+        int k = 5) const = 0;
 
     virtual void updateKeyframePoses(
         const std::vector<std::pair<uint64_t, Eigen::Isometry3d>>& id_pose_pairs) = 0;
 
     virtual void updateMap() = 0;
 
-    virtual std::vector<KeyFrame::SharedPtr> getAllKeyframes() const = 0;
-    virtual std::optional<KeyFrame::SharedPtr> getKeyframe(uint64_t id) const = 0;
-    virtual std::optional<KeyFrame::SharedPtr> getLatestKeyframe() const = 0;
+    virtual std::vector<Keyframe::SharedPtr> getAllKeyframes() const = 0;
+    virtual std::optional<Keyframe::SharedPtr> getKeyframe(uint64_t id) const = 0;
+    virtual std::optional<Keyframe::SharedPtr> getLatestKeyframe() const = 0;
 
     virtual PointCloudIRTPtr getGlobalMap() const = 0;
 };

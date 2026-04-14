@@ -30,14 +30,14 @@ public:
     explicit IkdTreeMapBuilder(const IkdTreeMapBuilderParams& params = {});
     ~IkdTreeMapBuilder() override = default;
 
-    std::optional<core::KeyFrame::SharedPtr> addFrame(
+    std::optional<core::Keyframe::SharedPtr> addFrame(
         const core::LidarFrame::SharedPtr& frame) override;
-    void addKeyFrame(const core::KeyFrame::SharedPtr& keyframe) override;
+    void addKeyFrame(const core::Keyframe::SharedPtr& keyframe) override;
 
     void clearMap() override;
 
     std::vector<core::NearestPointResult> queryNearestPoints(
-        const core::PointCloudIRTPtr& query_cloud, const Eigen::Isometry3d& T_map_lidar,
+        const core::PointCloudIRTConstPtr& query_cloud, const Eigen::Isometry3d& T_map_lidar,
         int k = 5) const override;
 
     void updateKeyframePoses(
@@ -45,9 +45,9 @@ public:
 
     void updateMap() override;
 
-    std::vector<core::KeyFrame::SharedPtr> getAllKeyframes() const override;
-    std::optional<core::KeyFrame::SharedPtr> getKeyframe(uint64_t id) const override;
-    std::optional<core::KeyFrame::SharedPtr> getLatestKeyframe() const override;
+    std::vector<core::Keyframe::SharedPtr> getAllKeyframes() const override;
+    std::optional<core::Keyframe::SharedPtr> getKeyframe(uint64_t id) const override;
+    std::optional<core::Keyframe::SharedPtr> getLatestKeyframe() const override;
     core::PointCloudIRTPtr getGlobalMap() const override;
 
 private:
@@ -67,7 +67,7 @@ private:
     std::optional<Eigen::Isometry3d> last_pending_correction_;
 
     mutable std::shared_mutex keyframe_mutex_;
-    std::vector<core::KeyFrame::SharedPtr> keyframes_;
+    std::vector<core::Keyframe::SharedPtr> keyframes_;
     std::unordered_map<uint64_t, size_t> keyframe_index_;  // id → keyframes_ 的 index
 
     std::atomic<uint64_t> next_keyframe_id_{0};

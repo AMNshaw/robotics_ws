@@ -20,7 +20,7 @@ public:
             ILoopClosureDetector::SharedPtr loop_closure_detector);
     ~BackEnd() = default;
 
-    void processKeyframe(const KeyFrame::SharedPtr& frame);
+    void processKeyframe(const Keyframe::SharedPtr& frame);
 
     std::optional<Eigen::Isometry3d> updateGlobalCorrection();
 

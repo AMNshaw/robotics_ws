@@ -26,7 +26,7 @@ public:
 
     virtual ~ILoopClosureDetector() = default;
 
-    virtual std::optional<LoopConstraint> detect(const KeyFrame::SharedPtr& current_keyframe,
+    virtual std::optional<LoopConstraint> detect(const Keyframe::SharedPtr& current_keyframe,
                                                  core::IMapBuilder::SharedPtr map_builder) = 0;
 };
 

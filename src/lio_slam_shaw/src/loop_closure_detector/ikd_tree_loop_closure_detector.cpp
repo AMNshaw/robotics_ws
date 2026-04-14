@@ -16,7 +16,7 @@ IkdTreeLoopClosureDetector::IkdTreeLoopClosureDetector(
 }
 
 std::optional<core::LoopConstraint> IkdTreeLoopClosureDetector::detect(
-    const core::KeyFrame::SharedPtr& current_keyframe, core::IMapBuilder::SharedPtr map_builder) {
+    const core::Keyframe::SharedPtr& current_keyframe, core::IMapBuilder::SharedPtr map_builder) {
     const auto all_keyframes = map_builder->getAllKeyframes();
     if (all_keyframes.size() < 2) return std::nullopt;
 
@@ -24,7 +24,7 @@ std::optional<core::LoopConstraint> IkdTreeLoopClosureDetector::detect(
     if (!candidate_opt.has_value()) return std::nullopt;
     const auto& candidate = candidate_opt.value();
 
-    if (!current_keyframe->cloud || current_keyframe->cloud->empty()) return std::nullopt;
+    if (!current_keyframe->cloud_body || current_keyframe->cloud_body->empty()) return std::nullopt;
 
     buildLocalMap(current_keyframe, candidate, all_keyframes);
 
@@ -32,7 +32,7 @@ std::optional<core::LoopConstraint> IkdTreeLoopClosureDetector::detect(
     initial_guess.pose = current_keyframe->pose;
 
     core::FeatureSet features;
-    features.raw_deskewed = current_keyframe->cloud;
+    features.raw_deskewed = current_keyframe->cloud_body;
 
     const auto result = scan_matcher_->match(features, initial_guess);
     if (!result.is_converged || result.fitness_score > params_.fitness_score_threshold) {
@@ -45,11 +45,11 @@ std::optional<core::LoopConstraint> IkdTreeLoopClosureDetector::detect(
                                 result.covariance, result.fitness_score};
 }
 
-std::optional<core::KeyFrame::SharedPtr> IkdTreeLoopClosureDetector::findCandidate(
-    const core::KeyFrame::SharedPtr& current_keyframe,
-    const std::vector<core::KeyFrame::SharedPtr>& all_keyframes) const {
+std::optional<core::Keyframe::SharedPtr> IkdTreeLoopClosureDetector::findCandidate(
+    const core::Keyframe::SharedPtr& current_keyframe,
+    const std::vector<core::Keyframe::SharedPtr>& all_keyframes) const {
     const Eigen::Vector3d curr_pos = current_keyframe->pose.translation();
-    core::KeyFrame::SharedPtr best = nullptr;
+    core::Keyframe::SharedPtr best = nullptr;
     double best_dist = std::numeric_limits<double>::max();
 
     for (const auto& kf : all_keyframes) {
@@ -73,12 +73,12 @@ std::optional<core::KeyFrame::SharedPtr> IkdTreeLoopClosureDetector::findCandida
 }
 
 void IkdTreeLoopClosureDetector::buildLocalMap(
-    const core::KeyFrame::SharedPtr& current_keyframe, const core::KeyFrame::SharedPtr& candidate,
-    const std::vector<core::KeyFrame::SharedPtr>& all_keyframes) const {
+    const core::Keyframe::SharedPtr& current_keyframe, const core::Keyframe::SharedPtr& candidate,
+    const std::vector<core::Keyframe::SharedPtr>& all_keyframes) const {
     map_builder_->clearMap();
     const Eigen::Vector3d cand_pos = candidate->pose.translation();
 
-    std::vector<std::pair<double, core::KeyFrame::SharedPtr>> dist_kf;
+    std::vector<std::pair<double, core::Keyframe::SharedPtr>> dist_kf;
     dist_kf.reserve(all_keyframes.size());
     for (const auto& kf : all_keyframes) {
         const double time_diff_to_curr =
@@ -96,7 +96,7 @@ void IkdTreeLoopClosureDetector::buildLocalMap(
 
     for (int i = 0; i < n; ++i) {
         const auto& kf = dist_kf[i].second;
-        if (!kf->cloud || kf->cloud->empty()) continue;
+        if (!kf->cloud_body || kf->cloud_body->empty()) continue;
         map_builder_->addKeyFrame(kf);
     }
 }

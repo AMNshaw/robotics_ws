@@ -24,17 +24,17 @@ public:
                                const IkdTreeLoopClosureDetectorParams& loop_closure_params);
     ~IkdTreeLoopClosureDetector() override = default;
 
-    std::optional<core::LoopConstraint> detect(const core::KeyFrame::SharedPtr& current_keyframe,
+    std::optional<core::LoopConstraint> detect(const core::Keyframe::SharedPtr& current_keyframe,
                                                core::IMapBuilder::SharedPtr map_builder) override;
 
 private:
-    std::optional<core::KeyFrame::SharedPtr> findCandidate(
-        const core::KeyFrame::SharedPtr& current_keyframe,
-        const std::vector<core::KeyFrame::SharedPtr>& all_keyframes) const;
+    std::optional<core::Keyframe::SharedPtr> findCandidate(
+        const core::Keyframe::SharedPtr& current_keyframe,
+        const std::vector<core::Keyframe::SharedPtr>& all_keyframes) const;
 
-    void buildLocalMap(const core::KeyFrame::SharedPtr& current_keyframe,
-                       const core::KeyFrame::SharedPtr& candidate,
-                       const std::vector<core::KeyFrame::SharedPtr>& all_keyframes) const;
+    void buildLocalMap(const core::Keyframe::SharedPtr& current_keyframe,
+                       const core::Keyframe::SharedPtr& candidate,
+                       const std::vector<core::Keyframe::SharedPtr>& all_keyframes) const;
 
     std::shared_ptr<map_builder::IkdTreeMapBuilder> map_builder_;
     std::shared_ptr<scan_matcher::IkdTreeScanMatcher> scan_matcher_;

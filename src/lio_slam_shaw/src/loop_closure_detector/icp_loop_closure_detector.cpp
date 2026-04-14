@@ -20,7 +20,7 @@ IcpLoopClosureDetector::IcpLoopClosureDetector(const IcpLoopClosureDetectorParam
     : params_(params) {}
 
 std::optional<core::LoopConstraint> IcpLoopClosureDetector::detect(
-    const core::KeyFrame::SharedPtr& current_keyframe, core::IMapBuilder::SharedPtr map_builder) {
+    const core::Keyframe::SharedPtr& current_keyframe, core::IMapBuilder::SharedPtr map_builder) {
     const auto all_keyframes = map_builder->getAllKeyframes();
 
     if (all_keyframes.size() < 2) return std::nullopt;
@@ -37,7 +37,7 @@ std::optional<core::LoopConstraint> IcpLoopClosureDetector::detect(
                       params_.icp_downsample_leaf);
 
     auto source_ds = std::make_shared<core::PointCloudIRT>();
-    voxel.setInputCloud(current_keyframe->cloud);
+    voxel.setInputCloud(current_keyframe->cloud_body);
     voxel.filter(*source_ds);
 
     auto target_ds = std::make_shared<core::PointCloudIRT>();
@@ -77,12 +77,12 @@ std::optional<core::LoopConstraint> IcpLoopClosureDetector::detect(
     return core::LoopConstraint{current_keyframe->id, candidate->id, relative_pose, cov, score};
 }
 
-std::optional<core::KeyFrame::SharedPtr> IcpLoopClosureDetector::findCandidate(
-    const core::KeyFrame::SharedPtr& current_keyframe,
-    const std::vector<core::KeyFrame::SharedPtr>& all_keyframes) const {
+std::optional<core::Keyframe::SharedPtr> IcpLoopClosureDetector::findCandidate(
+    const core::Keyframe::SharedPtr& current_keyframe,
+    const std::vector<core::Keyframe::SharedPtr>& all_keyframes) const {
     const Eigen::Vector3d curr_pos = current_keyframe->pose.translation();
 
-    core::KeyFrame::SharedPtr best = nullptr;
+    core::Keyframe::SharedPtr best = nullptr;
     double best_dist = std::numeric_limits<double>::max();
 
     for (const auto& kf : all_keyframes) {
@@ -106,11 +106,11 @@ std::optional<core::KeyFrame::SharedPtr> IcpLoopClosureDetector::findCandidate(
 }
 
 core::PointCloudIRTPtr IcpLoopClosureDetector::buildLocalMap(
-    const core::KeyFrame::SharedPtr& current_keyframe, const core::KeyFrame::SharedPtr& candidate,
-    const std::vector<core::KeyFrame::SharedPtr>& all_keyframes) const {
+    const core::Keyframe::SharedPtr& current_keyframe, const core::Keyframe::SharedPtr& candidate,
+    const std::vector<core::Keyframe::SharedPtr>& all_keyframes) const {
     const Eigen::Vector3d cand_pos = candidate->pose.translation();
 
-    std::vector<std::pair<double, core::KeyFrame::SharedPtr>> dist_kf;
+    std::vector<std::pair<double, core::Keyframe::SharedPtr>> dist_kf;
     dist_kf.reserve(all_keyframes.size());
     for (const auto& kf : all_keyframes) {
         const double time_diff =
@@ -129,10 +129,10 @@ core::PointCloudIRTPtr IcpLoopClosureDetector::buildLocalMap(
     auto local_map = std::make_shared<core::PointCloudIRT>();
     for (int i = 0; i < n; ++i) {
         const auto& kf = dist_kf[i].second;
-        if (!kf->cloud || kf->cloud->empty()) continue;
+        if (!kf->cloud_body || kf->cloud_body->empty()) continue;
 
         core::PointCloudIRT cloud_world;
-        pcl::transformPointCloud(*kf->cloud, cloud_world, kf->pose.matrix().cast<float>());
+        pcl::transformPointCloud(*kf->cloud_body, cloud_world, kf->pose.matrix().cast<float>());
         *local_map += cloud_world;
     }
 

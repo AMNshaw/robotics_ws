@@ -40,7 +40,7 @@ void SlamProcessor::frontendThread() {
 
         if (!run_.load()) break;
 
-        std::optional<KeyFrame::SharedPtr> keyframe_to_push;
+        std::optional<Keyframe::SharedPtr> keyframe_to_push;
         {
             std::shared_lock<std::shared_mutex> map_lock(map_mutex_);
             std::optional<LidarFrame::SharedPtr> lidar_frame_opt = front_end_->processPipeline();
@@ -57,7 +57,7 @@ void SlamProcessor::frontendThread() {
 
 void SlamProcessor::backendThread() {
     while (run_.load()) {
-        KeyFrame::SharedPtr keyframe;
+        Keyframe::SharedPtr keyframe;
         {
             std::unique_lock<std::mutex> lock(backend_mutex_);
             backend_cv_.wait(lock, [this] { return !run_.load() || !keyframe_queue_.empty(); });

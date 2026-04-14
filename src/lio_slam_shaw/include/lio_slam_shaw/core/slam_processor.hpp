@@ -51,7 +51,7 @@ private:
     std::mutex backend_mutex_;
     std::condition_variable backend_cv_;
 
-    std::queue<KeyFrame::SharedPtr> keyframe_queue_;
+    std::queue<Keyframe::SharedPtr> keyframe_queue_;
     std::shared_mutex map_mutex_;
 };
 
