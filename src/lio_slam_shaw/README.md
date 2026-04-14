@@ -19,7 +19,7 @@ Built with modern software engineering principles in mind, this project transcen
 * **C++17** or higher
 * **Eigen3** (Matrix operations & optimization core)
 * **PCL** (Point cloud data structures & voxel filtering)
-* **GTSAM** (Pose Graph global optimization)
+* **GTSAM 4.2.0** (Pose Graph global optimization)
 
 ## 🙏 Acknowledgements
 This framework is built upon the shoulders of giants. We sincerely thank the authors of the following outstanding open-source projects and academic papers, whose components and concepts heavily inspired this work:

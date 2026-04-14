@@ -1,5 +1,3 @@
-#pragma once
-
 #include "lio_slam_shaw/core/frontend.hpp"
 
 namespace lio_slam_shaw::core {
