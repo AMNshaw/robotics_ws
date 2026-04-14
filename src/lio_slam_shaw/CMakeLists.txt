@@ -38,7 +38,7 @@ add_library(imu_preintegrator
   src/imu_preintegrator/gtsam_imu_preintegrator.cpp
 )
 target_link_libraries(imu_preintegrator
-  ${GTSAM_LIBRARIES}
+  gtsam
   OpenMP::OpenMP_CXX
 )
 
@@ -79,7 +79,7 @@ add_library(map_optimizer
   src/map_optimizer/gtsam_map_optimizer.cpp
 )
 target_link_libraries(map_optimizer
-  ${GTSAM_LIBRARIES}
+  gtsam
   OpenMP::OpenMP_CXX
 )
 
@@ -134,35 +134,34 @@ target_link_libraries(factory
   map_builder
   map_optimizer
   loop_closure_detector
+  gtsam
 )
 ament_target_dependencies(factory
   rclcpp
 )
 
-# add_executable(slam_node
-#   src/slam_node.cpp
-# )
-# target_link_libraries(slam_node
-#   factory
-#   core
-# )
-# ament_target_dependencies(slam_node
-#   rclcpp
-#   std_msgs
-#   sensor_msgs
-#   nav_msgs
-#   geometry_msgs
-#   tf2
-#   tf2_ros
-#   tf2_eigen
-#   pcl_conversions
-# )
+add_executable(slam_node
+  src/slam_node.cpp
+)
+target_link_libraries(slam_node
+  factory
+  core
+)
+ament_target_dependencies(slam_node
+  rclcpp
+  std_msgs
+  sensor_msgs
+  nav_msgs
+  geometry_msgs
+  tf2
+  tf2_ros
+  tf2_eigen
+  pcl_conversions
+)
 
-# install(TARGETS slam_node
-#   DESTINATION lib/${PROJECT_NAME}
-# )
-
-
+install(TARGETS slam_node
+  DESTINATION lib/${PROJECT_NAME}
+)
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)

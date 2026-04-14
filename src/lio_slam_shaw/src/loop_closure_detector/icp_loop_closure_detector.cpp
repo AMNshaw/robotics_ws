@@ -4,8 +4,15 @@
 #include <pcl/registration/icp.h>
 
 #include <algorithm>
-#include <chrono>
 #include <limits>
+#include <pcl/filters/impl/filter.hpp>
+#include <pcl/filters/impl/voxel_grid.hpp>
+#include <pcl/impl/pcl_base.hpp>
+#include <pcl/kdtree/impl/kdtree_flann.hpp>
+#include <pcl/registration/impl/correspondence_estimation.hpp>
+#include <pcl/registration/impl/icp.hpp>
+#include <pcl/search/impl/kdtree.hpp>
+#include <pcl/search/impl/search.hpp>
 
 namespace lio_slam_shaw {
 

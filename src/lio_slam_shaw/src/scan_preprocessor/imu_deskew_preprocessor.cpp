@@ -5,6 +5,9 @@
 
 #include <algorithm>
 #include <optional>
+#include <pcl/filters/impl/filter.hpp>
+#include <pcl/filters/impl/voxel_grid.hpp>
+#include <pcl/impl/pcl_base.hpp>
 
 namespace lio_slam_shaw::lidar_preprocessor {
 

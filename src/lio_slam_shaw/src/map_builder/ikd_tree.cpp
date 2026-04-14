@@ -1,5 +1,7 @@
 #include "lio_slam_shaw/map_builder/ikd_tree.h"
 
+#include "lio_slam_shaw/core/sensor_data_types.hpp"
+
 /*
 Description: ikd-Tree: an incremental k-d tree for robotic applications
 Author: Yixi Cai
@@ -1555,4 +1557,5 @@ int MANUAL_Q<T>::size() {
 template class KD_TREE<ikdTree_PointType>;
 template class KD_TREE<pcl::PointXYZ>;
 template class KD_TREE<pcl::PointXYZI>;
+template class KD_TREE<lio_slam_shaw::core::PointXYZIRT>;
 template class KD_TREE<pcl::PointXYZINormal>;
