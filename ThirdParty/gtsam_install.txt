@@ -1,0 +1,20 @@
+sudo rm -rf /usr/local/include/gtsam /usr/local/lib/libgtsam*
+
+# 2. 下載 GTSAM 並切換到 4.2.0 穩定版
+git clone https://github.com/borglab/gtsam.git
+cd gtsam
+git checkout 4.2.0
+
+# 3. 建立 build 資料夾
+mkdir build && cd build
+
+# 4. 執行 CMake (這裡的參數是保命關鍵！)
+cmake .. \
+    -DGTSAM_BUILD_WITH_MARCH_NATIVE=OFF \
+    -DGTSAM_USE_SYSTEM_EIGEN=ON \
+    -DGTSAM_BUILD_TESTS=OFF \
+    -DGTSAM_BUILD_EXAMPLES_ALWAYS=OFF
+
+# 5. 編譯與安裝 (請根據你的 CPU 核心數調整 -j)
+make -j$(nproc)
+sudo make install

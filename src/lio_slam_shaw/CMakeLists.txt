@@ -58,6 +58,7 @@ target_link_libraries(map_builder
   ${PCL_LIBRARIES}
   OpenMP::OpenMP_CXX
 )
+target_compile_options(map_builder PRIVATE -w)
 
 add_library(scan_matcher
   src/scan_matcher/ikd_tree_scan_matcher.cpp

@@ -41,8 +41,7 @@ SlamNode::SlamNode(const rclcpp::NodeOptions& options) : Node("lio_slam_shaw_nod
         livox_subscription_ = nullptr;
     } else if (lidar_type == "Livox") {
         livox_subscription_ = create_subscription<sensor_msgs::msg::PointCloud2>(
-            "livox_points", 10,
-            std::bind(&SlamNode::livoxLidarCallback, this, std::placeholders::_1));
+            lidar_topic, 10, std::bind(&SlamNode::livoxLidarCallback, this, std::placeholders::_1));
         velodyne_subscription_ = nullptr;
         ouster_subscription_ = nullptr;
     } else {
