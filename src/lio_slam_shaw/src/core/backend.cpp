@@ -22,16 +22,22 @@ void BackEnd::processKeyframe(const Keyframe::SharedPtr& keyframe) {
     pending_correction_ = corrected_pose * keyframe->matched_result.pose.inverse();
 }
 
-std::optional<Eigen::Isometry3d> BackEnd::updateGlobalCorrection() {
-    auto result = pending_correction_;
+bool BackEnd::updateGlobalCorrection() {
+    if (!pending_correction_.has_value() || pending_corrected_poses_.empty()) {
+        pending_correction_ = std::nullopt;
+        pending_corrected_poses_.clear();
+        return false;
+    }
+
+    T_map_odom_ = pending_correction_.value() * T_map_odom_;
     pending_correction_ = std::nullopt;
 
-    if (pending_corrected_poses_.empty()) return std::nullopt;
     map_builder_->updateKeyframePoses(pending_corrected_poses_);
     pending_corrected_poses_.clear();
-
-    return result;
+    return true;
 }
+
+Eigen::Isometry3d BackEnd::getGlobalCorrection() const { return T_map_odom_; }
 
 void BackEnd::updateMap() { map_builder_->updateMap(); }
 

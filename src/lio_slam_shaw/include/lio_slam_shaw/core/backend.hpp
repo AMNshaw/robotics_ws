@@ -22,7 +22,8 @@ public:
 
     void processKeyframe(const Keyframe::SharedPtr& frame);
 
-    std::optional<Eigen::Isometry3d> updateGlobalCorrection();
+    bool updateGlobalCorrection();
+    Eigen::Isometry3d getGlobalCorrection() const;
 
     void updateMap();
 
@@ -33,6 +34,8 @@ private:
 
     std::optional<Eigen::Isometry3d> pending_correction_;
     std::vector<std::pair<uint64_t, Eigen::Isometry3d>> pending_corrected_poses_;
+
+    Eigen::Isometry3d T_map_odom_ = Eigen::Isometry3d::Identity();
 };
 
 }  // namespace lio_slam_shaw::core

@@ -12,15 +12,17 @@ SlamProcessor::~SlamProcessor() {
     run_.store(false);
     sync_cv_.notify_all();
     backend_cv_.notify_all();
+    viz_cv_.notify_all();
 
     if (frontend_thread_.joinable()) frontend_thread_.join();
     if (backend_thread_.joinable()) backend_thread_.join();
+    if (visualization_thread_.joinable()) visualization_thread_.join();
 }
-
 void SlamProcessor::start() {
     run_.store(true);
     frontend_thread_ = std::thread(&SlamProcessor::frontendThread, this);
     backend_thread_ = std::thread(&SlamProcessor::backendThread, this);
+    visualization_thread_ = std::thread(&SlamProcessor::visualizationThread, this);
 }
 
 void SlamProcessor::feedLidar(const LidarData& lidar) {
@@ -31,6 +33,20 @@ void SlamProcessor::feedLidar(const LidarData& lidar) {
 void SlamProcessor::feedImu(const ImuData& imu) {
     front_end_->feed_imu(imu);
     sync_cv_.notify_one();
+
+    if (odom_callback_) {
+        const auto state = front_end_->getLatestNavState();
+        odom_callback_(state);
+    }
+}
+
+void SlamProcessor::registerOdometryCallback(const SlamProcessor::OdometryCallback& callback) {
+    odom_callback_ = callback;
+}
+
+void SlamProcessor::registerVisualizationCallback(
+    const SlamProcessor::VisualizationCallback& callback) {
+    viz_callback_ = callback;
 }
 
 void SlamProcessor::frontendThread() {
@@ -45,7 +61,17 @@ void SlamProcessor::frontendThread() {
             std::shared_lock<std::shared_mutex> map_lock(map_mutex_);
             std::optional<LidarFrame::SharedPtr> lidar_frame_opt = front_end_->processPipeline();
             if (!lidar_frame_opt.has_value()) continue;
-            keyframe_to_push = map_builder_->addFrame(lidar_frame_opt.value());
+            auto lidar_frame = lidar_frame_opt.value();
+            keyframe_to_push = map_builder_->addFrame(lidar_frame);
+            {
+                std::lock_guard<std::mutex> viz_lock(viz_mutex_);
+                viz_queue_.emplace_back(VisualizationData{
+                    lidar_frame->timestamp, lidar_frame->state_odom.pose,
+                    back_end_->getGlobalCorrection(), lidar_frame->deskewed_cloud});
+                if (viz_queue_.size() > 5) {
+                    viz_queue_.pop_front();
+                }
+            }
         }
         if (keyframe_to_push.has_value()) {
             std::lock_guard<std::mutex> backend_lock(backend_mutex_);
@@ -68,11 +94,29 @@ void SlamProcessor::backendThread() {
         }
 
         back_end_->processKeyframe(keyframe);
-        std::optional<Eigen::Isometry3d> global_correction = back_end_->updateGlobalCorrection();
-        if (global_correction.has_value()) {
+        if (back_end_->updateGlobalCorrection()) {
             std::unique_lock<std::shared_mutex> map_lock(map_mutex_);
             back_end_->updateMap();
-            front_end_->applyOdomToMapCorrection(global_correction.value());
+            front_end_->setOdomToMapTransform(back_end_->getGlobalCorrection());
+        }
+    }
+}
+
+void SlamProcessor::visualizationThread() {
+    while (run_.load()) {
+        std::unique_lock<std::mutex> lock(viz_mutex_);
+        viz_cv_.wait(lock, [this] { return !viz_queue_.empty() || !run_.load(); });
+
+        if (!run_.load() && viz_queue_.empty()) {
+            break;
+        }
+
+        auto viz_data = viz_queue_.front();
+        viz_queue_.pop_front();
+
+        lock.unlock();
+        if (viz_callback_) {
+            viz_callback_(viz_data);
         }
     }
 }

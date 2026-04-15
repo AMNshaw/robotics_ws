@@ -36,9 +36,9 @@ NavState FrontEnd::getLatestNavState() const {
     return state;
 }
 
-void FrontEnd::applyOdomToMapCorrection(const Eigen::Isometry3d& correction_delta) {
+void FrontEnd::setOdomToMapTransform(const Eigen::Isometry3d& T_map_odom) {
     std::lock_guard<std::mutex> lock(pipeline_mtx_);
-    T_map_odom_ = correction_delta * T_map_odom_;
+    T_map_odom_ = T_map_odom;
 }
 
 bool FrontEnd::SensorDataSynced() { return data_manager_->hasSyncedData(); }
@@ -68,8 +68,14 @@ std::optional<LidarFrame::SharedPtr> FrontEnd::processPipeline() {
     imu_preintegrator_->updateBiasAndRepropagateImus(matched_result_in_odom, opt_imu_batch,
                                                      reprop_imu_batch);
 
-    return LidarFrame::make_frame(frame_id_counter_++, lidar.timestamp, lidar.cloud,
-                                  processed_cloud.cloud, features, matched_result_in_map);
+    NavState corrected_state = state_odom;
+    corrected_state.timestamp = lidar.timestamp;
+    corrected_state.pose = matched_result_in_odom.pose;
+
+    auto frame = LidarFrame::make_frame(frame_id_counter_++, lidar.timestamp, lidar.cloud,
+                                        processed_cloud.cloud, features, matched_result_in_map,
+                                        corrected_state);
+    return frame;
 }
 
 }  // namespace lio_slam_shaw::core

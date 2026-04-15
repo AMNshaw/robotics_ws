@@ -1,5 +1,6 @@
 #include "lio_slam_shaw/slam_node.hpp"
 
+#include <geometry_msgs/msg/transform_stamped.hpp>
 #include <set>
 
 #include "lio_slam_shaw/factory/slam_factory.hpp"
@@ -23,6 +24,8 @@ SlamNode::SlamNode(const rclcpp::NodeOptions& options) : Node("lio_slam_shaw_nod
         RCLCPP_ERROR(get_logger(), "Imu topic is not specified.");
         throw std::runtime_error("Imu topic is not specified");
     }
+
+    odom_publisher_ = create_publisher<nav_msgs::msg::Odometry>("odom", 10);
 
     imu_subscription_ = create_subscription<sensor_msgs::msg::Imu>(
         imu_topic, 100, std::bind(&SlamNode::imuCallback, this, std::placeholders::_1));
@@ -51,10 +54,12 @@ SlamNode::SlamNode(const rclcpp::NodeOptions& options) : Node("lio_slam_shaw_nod
         throw std::runtime_error("Invalid Lidar Type");
     }
 
-    viz_thread_ = std::thread([this]() {
-        RCLCPP_INFO(this->get_logger(), "Visualizer thread started!");
-        this->visualizationThread();
-    });
+    tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
+
+    slam_processor_->registerOdometryCallback(
+        [this](const core::NavState& odom_state) { publishOdometry(odom_state); });
+    slam_processor_->registerVisualizationCallback(
+        [this](const core::VisualizationData& viz_data) { publishVisualization(viz_data); });
 
     RCLCPP_INFO(get_logger(), "LIO-SLAM-Shaw Node initialized.");
 }
@@ -62,9 +67,6 @@ SlamNode::SlamNode(const rclcpp::NodeOptions& options) : Node("lio_slam_shaw_nod
 SlamNode::~SlamNode() {
     RCLCPP_INFO(get_logger(), "Shutting down LIO-SLAM-Shaw Node...");
     rclcpp::shutdown();
-    if (viz_thread_.joinable()) {
-        viz_thread_.join();
-    }
     RCLCPP_INFO(get_logger(), "LIO-SLAM-Shaw Node shut down.");
 }
 
@@ -96,21 +98,65 @@ void SlamNode::livoxLidarCallback(const sensor_msgs::msg::PointCloud2::SharedPtr
     slam_processor_->feedLidar(lidar_data);
 }
 
-void SlamNode::visualizationThread() {
-    while (rclcpp::ok()) {
-        std::unique_lock<std::mutex> lock(viz_mutex_);
-        viz_cv_.wait(lock, [this] { return !viz_queue_.empty() || !rclcpp::ok(); });
+void SlamNode::publishOdometry(const core::NavState& odom_state) {
+    nav_msgs::msg::Odometry odom_msg;
+    odom_msg.header.stamp = coreToRos(odom_state.timestamp);
+    odom_msg.header.frame_id = "odom";
+    odom_msg.child_frame_id = "base_link";
 
-        if (!rclcpp::ok()) {
-            break;
-        }
+    odom_msg.pose.pose.position.x = odom_state.pose.translation().x();
+    odom_msg.pose.pose.position.y = odom_state.pose.translation().y();
+    odom_msg.pose.pose.position.z = odom_state.pose.translation().z();
+    Eigen::Quaterniond q(odom_state.pose.rotation());
+    geometry_msgs::msg::Quaternion quat;
+    quat.x = q.x();
+    quat.y = q.y();
+    quat.z = q.z();
+    quat.w = q.w();
+    odom_msg.pose.pose.orientation = quat;
+    odom_msg.twist.twist.linear.x = odom_state.linear_vel.x();
+    odom_msg.twist.twist.linear.y = odom_state.linear_vel.y();
+    odom_msg.twist.twist.linear.z = odom_state.linear_vel.z();
+    odom_msg.twist.twist.angular.x = odom_state.angular_vel.x();
+    odom_msg.twist.twist.angular.y = odom_state.angular_vel.y();
+    odom_msg.twist.twist.angular.z = odom_state.angular_vel.z();
 
-        auto viz_data = viz_queue_.front();
-        viz_queue_.pop_front();
-        lock.unlock();
+    odom_publisher_->publish(odom_msg);
 
-        // Publish odometry or visualization data here using viz_data
-    }
+    geometry_msgs::msg::TransformStamped tf_msg;
+    tf_msg.header.stamp = odom_msg.header.stamp;
+    tf_msg.header.frame_id = "odom";
+    tf_msg.child_frame_id = "base_link";
+    tf_msg.transform.translation.x = odom_state.pose.translation().x();
+    tf_msg.transform.translation.y = odom_state.pose.translation().y();
+    tf_msg.transform.translation.z = odom_state.pose.translation().z();
+    tf_msg.transform.rotation = quat;
+
+    tf_broadcaster_->sendTransform(tf_msg);
+}
+
+void SlamNode::publishVisualization(const core::VisualizationData& viz_data) {
+    auto cloud_msg = std::make_shared<sensor_msgs::msg::PointCloud2>();
+
+    geometry_msgs::msg::TransformStamped tf_msg;
+    tf_msg.header.stamp = coreToRos(viz_data.timestamp);
+    tf_msg.header.frame_id = "map";
+    tf_msg.child_frame_id = "odom";
+    tf_msg.transform.translation.x = viz_data.T_map_odom.translation().x();
+    tf_msg.transform.translation.y = viz_data.T_map_odom.translation().y();
+    tf_msg.transform.translation.z = viz_data.T_map_odom.translation().z();
+    Eigen::Quaterniond q(viz_data.T_map_odom.rotation());
+    tf_msg.transform.rotation.x = q.x();
+    tf_msg.transform.rotation.y = q.y();
+    tf_msg.transform.rotation.z = q.z();
+    tf_msg.transform.rotation.w = q.w();
+
+    tf_broadcaster_->sendTransform(tf_msg);
+
+    cloud_msg->header.stamp = coreToRos(viz_data.timestamp);
+    cloud_msg->header.frame_id = "odom";
+    pcl::toROSMsg(*(viz_data.scan), *cloud_msg);
+    cloud_publisher_->publish(*cloud_msg);
 }
 
 }  // namespace lio_slam_shaw

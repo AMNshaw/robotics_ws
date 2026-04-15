@@ -23,6 +23,7 @@ struct LidarFrame {
     FeatureSet features;
 
     ScanMatchResult matched_result;
+    NavState state_odom;
 
     bool is_keyframe = false;
 
@@ -34,13 +35,14 @@ struct LidarFrame {
 
     LidarFrame(uint64_t frame_id, Timestamp stamp, const pcl::PointCloud<PointXYZIRT>::Ptr& raw,
                const pcl::PointCloud<PointXYZIRT>::Ptr& deskewed, const FeatureSet& features,
-               const ScanMatchResult& matched_result)
+               const ScanMatchResult& matched_result, const NavState& corrected_state)
         : id(frame_id),
           timestamp(stamp),
           raw_cloud(raw),
           deskewed_cloud(deskewed),
           features(features),
-          matched_result(matched_result) {}
+          matched_result(matched_result),
+          state_odom(corrected_state) {}
 
     static SharedPtr make_frame(uint64_t id, Timestamp stamp) {
         return std::make_shared<LidarFrame>(id, stamp);
@@ -49,8 +51,10 @@ struct LidarFrame {
     static SharedPtr make_frame(uint64_t id, Timestamp stamp,
                                 const pcl::PointCloud<PointXYZIRT>::Ptr& raw,
                                 const pcl::PointCloud<PointXYZIRT>::Ptr& deskewed,
-                                const FeatureSet& features, const ScanMatchResult& matched_result) {
-        return std::make_shared<LidarFrame>(id, stamp, raw, deskewed, features, matched_result);
+                                const FeatureSet& features, const ScanMatchResult& matched_result,
+                                const NavState& corrected_state) {
+        return std::make_shared<LidarFrame>(id, stamp, raw, deskewed, features, matched_result,
+                                            corrected_state);
     }
 };
 

@@ -40,7 +40,7 @@ std::optional<core::NavState> interpolateNavState(const std::vector<core::NavSta
     result.pose.linear() = q0.slerp(alpha, q1).normalized().toRotationMatrix();
     result.pose.translation() =
         s0.pose.translation() + alpha * (s1.pose.translation() - s0.pose.translation());
-    result.vel = s0.vel + alpha * (s1.vel - s0.vel);
+    result.linear_vel = s0.linear_vel + alpha * (s1.linear_vel - s0.linear_vel);
     result.acc_bias = s0.acc_bias;
     result.gyr_bias = s0.gyr_bias;
     result.pose_cov = s0.pose_cov;

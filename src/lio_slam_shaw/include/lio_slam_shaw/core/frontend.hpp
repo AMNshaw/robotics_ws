@@ -36,7 +36,7 @@ public:
 
     std::optional<LidarFrame::SharedPtr> processPipeline();
 
-    void applyOdomToMapCorrection(const Eigen::Isometry3d& correction_delta);
+    void setOdomToMapTransform(const Eigen::Isometry3d& T_map_odom);
 
 private:
     mutable std::mutex pipeline_mtx_;

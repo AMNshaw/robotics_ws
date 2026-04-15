@@ -23,7 +23,8 @@ inline double getDeltaSec(const Timestamp& t_start, const Timestamp& t_end) {
 struct NavState {
     Timestamp timestamp;
     Eigen::Isometry3d pose = Eigen::Isometry3d::Identity();
-    Eigen::Vector3d vel = Eigen::Vector3d::Zero();
+    Eigen::Vector3d linear_vel = Eigen::Vector3d::Zero();
+    Eigen::Vector3d angular_vel = Eigen::Vector3d::Zero();
     Eigen::Matrix<double, 6, 6> pose_cov = Eigen::Matrix<double, 6, 6>::Identity() * 1e-4;
     Eigen::Vector3d acc_bias = Eigen::Vector3d::Zero();
     Eigen::Vector3d gyr_bias = Eigen::Vector3d::Zero();
@@ -75,13 +76,6 @@ struct ScanMatchResult {
     bool is_converged = false;
     bool is_degenerate = false;
     double fitness_score = 0.0;
-};
-
-struct VisualizationData {
-    Timestamp timestamp;
-    Eigen::Isometry3d pose_odom;
-    Eigen::Isometry3d T_map_odom;
-    PointCloudIRTPtr scan;
 };
 
 }  // namespace lio_slam_shaw::core

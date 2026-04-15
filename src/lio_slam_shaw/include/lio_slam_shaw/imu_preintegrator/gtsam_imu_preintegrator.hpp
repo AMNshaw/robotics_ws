@@ -59,8 +59,8 @@ private:
                           const gtsam::imuBias::ConstantBias& biasCur);
 
     gtsam::Pose3 toGtsamPose(const Eigen::Isometry3d& pose) const;
-    core::NavState fromGtsamNavState(const gtsam::NavState& g_state,
-                                     const core::Timestamp& timestamp) const;
+    core::NavState fromGtsamNavState(const core::Timestamp& timestamp,
+                                     const gtsam::NavState& g_state) const;
 
     GtsamImuPreintegratorParams params_;
     gtsam::Pose3 T_base_imu_;

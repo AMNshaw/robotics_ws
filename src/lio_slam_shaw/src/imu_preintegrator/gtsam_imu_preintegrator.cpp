@@ -77,9 +77,15 @@ void GtsamImuPreintegrator::integrateImusAndPredictNoLock(const std::vector<core
 
         const auto gtsam_mid =
             imu_integrator_predict_->predict(last_optimized_state_, last_optimized_bias_);
-        const gtsam::Pose3 base_pose = gtsam_mid.pose().compose(T_imu_base_);
-        nav_state_queue_.push_back(
-            fromGtsamNavState(gtsam::NavState(base_pose, gtsam_mid.velocity()), imu.timestamp));
+
+        const Eigen::Vector3d gyr_corrected =
+            mean_gyr - Eigen::Vector3d(last_optimized_bias_.gyroscope().x(),
+                                       last_optimized_bias_.gyroscope().y(),
+                                       last_optimized_bias_.gyroscope().z());
+        auto nav_state = fromGtsamNavState(imu.timestamp, gtsam_mid);
+        nav_state.angular_vel =
+            Eigen::Matrix3d(T_base_imu_.rotation().matrix().cast<double>()) * gyr_corrected;
+        nav_state_queue_.push_back(nav_state);
 
         last_imu_ = imu;
     }
@@ -165,7 +171,8 @@ std::optional<core::NavState> GtsamImuPreintegrator::queryNavState(const core::T
     result.pose.linear() = q0.slerp(alpha, q1).normalized().toRotationMatrix();
     result.pose.translation() =
         s0.pose.translation() + alpha * (s1.pose.translation() - s0.pose.translation());
-    result.vel = s0.vel + alpha * (s1.vel - s0.vel);
+    result.linear_vel = s0.linear_vel + alpha * (s1.linear_vel - s0.linear_vel);
+    result.angular_vel = s0.angular_vel + alpha * (s1.angular_vel - s0.angular_vel);
     result.acc_bias = s0.acc_bias;
     result.gyr_bias = s0.gyr_bias;
     result.pose_cov = s0.pose_cov;
@@ -302,10 +309,19 @@ void GtsamImuPreintegrator::resetOptimization() {
 gtsam::Pose3 GtsamImuPreintegrator::toGtsamPose(const Eigen::Isometry3d& pose) const {
     return gtsam::Pose3(pose.matrix());
 }
-core::NavState GtsamImuPreintegrator::fromGtsamNavState(const gtsam::NavState& g_state,
-                                                        const core::Timestamp& timestamp) const {
-    return core::NavState{timestamp, Eigen::Isometry3d(g_state.pose().matrix()),
-                          g_state.velocity()};
+core::NavState GtsamImuPreintegrator::fromGtsamNavState(const core::Timestamp& timestamp,
+                                                        const gtsam::NavState& g_state) const {
+    core::NavState state;
+    state.timestamp = timestamp;
+    state.pose = Eigen::Isometry3d(g_state.pose().matrix());
+    state.linear_vel = g_state.velocity();
+    state.acc_bias = Eigen::Vector3d(last_optimized_bias_.accelerometer().x(),
+                                     last_optimized_bias_.accelerometer().y(),
+                                     last_optimized_bias_.accelerometer().z());
+    state.gyr_bias =
+        Eigen::Vector3d(last_optimized_bias_.gyroscope().x(), last_optimized_bias_.gyroscope().y(),
+                        last_optimized_bias_.gyroscope().z());
+    return state;
 }
 
 }  // namespace lio_slam_shaw
