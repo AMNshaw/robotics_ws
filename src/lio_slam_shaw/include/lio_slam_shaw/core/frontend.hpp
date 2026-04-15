@@ -31,7 +31,7 @@ public:
     void feed_lidar(const LidarData& lidar);
     void feed_imu(const ImuData& imu);
 
-    NavState getLatestNavState() const;
+    NavState getLatestOdomState() const;
     bool SensorDataSynced();
 
     std::optional<LidarFrame::SharedPtr> processPipeline();
@@ -50,6 +50,7 @@ private:
     uint64_t frame_id_counter_ = 0;
 
     Eigen::Isometry3d T_map_odom_ = Eigen::Isometry3d::Identity();
+    Eigen::Matrix<double, 6, 6> latest_scan_match_cov_ = Eigen::Matrix<double, 6, 6>::Identity();
 };
 }  // namespace lio_slam_shaw::core
 #endif  // LIO_SLAM_SHAW__CORE__FRONTEND_HPP_

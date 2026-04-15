@@ -29,10 +29,10 @@ void FrontEnd::feed_imu(const ImuData& imu) {
     last_processed_imu_time_ = imu.timestamp;
 }
 
-NavState FrontEnd::getLatestNavState() const {
+NavState FrontEnd::getLatestOdomState() const {
     std::lock_guard<std::mutex> lock(pipeline_mtx_);
-    auto state = imu_preintegrator_->getLatestNavState();
-    state.pose = T_map_odom_ * state.pose;
+    auto state = imu_preintegrator_->getLatestPredictState();
+    state.pose_cov = latest_scan_match_cov_;
     return state;
 }
 
@@ -56,7 +56,7 @@ std::optional<LidarFrame::SharedPtr> FrontEnd::processPipeline() {
     auto processed_cloud = scan_preprocessor_->processCloud(nav_snapshot, lidar);
     auto features = feature_extractor_->extract(processed_cloud);
 
-    auto state_odom = imu_preintegrator_->getLatestNavState();
+    auto state_odom = imu_preintegrator_->getLatestPredictState();
     auto state_map = state_odom;
     state_map.pose = T_map_odom_ * state_odom.pose;
     auto matched_result_in_map = scan_matcher_->match(features, state_map);
