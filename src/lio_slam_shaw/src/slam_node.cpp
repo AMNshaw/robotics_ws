@@ -26,6 +26,7 @@ SlamNode::SlamNode(const rclcpp::NodeOptions& options) : Node("lio_slam_shaw_nod
     }
 
     odom_publisher_ = create_publisher<nav_msgs::msg::Odometry>("odom", 10);
+    cloud_publisher_ = create_publisher<sensor_msgs::msg::PointCloud2>("scan", 10);
 
     imu_subscription_ = create_subscription<sensor_msgs::msg::Imu>(
         imu_topic, 100, std::bind(&SlamNode::imuCallback, this, std::placeholders::_1));
