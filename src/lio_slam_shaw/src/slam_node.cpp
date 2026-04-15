@@ -25,6 +25,16 @@ SlamNode::SlamNode(const rclcpp::NodeOptions& options) : Node("lio_slam_shaw_nod
         throw std::runtime_error("Imu topic is not specified");
     }
 
+    bool use_tf_extrinsic = declare_parameter("use_tf_extrinsic", false);
+    std::string tracking_frame_id = "";
+    std::string lidar_frame_id = "";
+    std::string imu_frame_id = "";
+    if (use_tf_extrinsic) {
+        tracking_frame_id = declare_parameter("tracking_frame_id", "base_link");
+        lidar_frame_id = declare_parameter("lidar_frame_id", "lidar_link");
+        imu_frame_id = declare_parameter("imu_frame_id", "imu_link");
+    }
+
     odom_publisher_ = create_publisher<nav_msgs::msg::Odometry>("odom", 10);
     cloud_publisher_ = create_publisher<sensor_msgs::msg::PointCloud2>("scan", 10);
 

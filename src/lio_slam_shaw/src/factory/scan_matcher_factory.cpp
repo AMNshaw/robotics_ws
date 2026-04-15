@@ -7,6 +7,13 @@ namespace lio_slam_shaw::factory {
 core::IScanMatcher::SharedPtr ScanMatcherFactory::create(rclcpp::Node::SharedPtr node,
                                                          core::IMapBuilder::SharedPtr map_builder) {
     scan_matcher::IkdTreeScanMatcherParams params;
+    bool use_tf_extrinsic = node->declare_parameter<bool>("use_tf_extrinsic", false);
+    if (!use_tf_extrinsic) {
+        params.T_body_lidar_trans = node->declare_parameter<std::vector<double>>(
+            "T_base_lidar_trans", params.T_body_lidar_trans);
+        params.T_body_lidar_rot = node->declare_parameter<std::vector<double>>(
+            "T_base_lidar_rot", params.T_body_lidar_rot);
+    }
     params.k_neighbors =
         node->declare_parameter<int>("scan_matcher.k_neighbors", params.k_neighbors);
     params.max_iterations =
@@ -17,10 +24,7 @@ core::IScanMatcher::SharedPtr ScanMatcherFactory::create(rclcpp::Node::SharedPtr
         node->declare_parameter<int>("scan_matcher.min_valid_points", params.min_valid_points);
     params.degenerate_threshold = node->declare_parameter<double>(
         "scan_matcher.degenerate_threshold", params.degenerate_threshold);
-    params.T_body_lidar_trans = node->declare_parameter<std::vector<double>>(
-        "scan_matcher.T_body_lidar_trans", params.T_body_lidar_trans);
-    params.T_body_lidar_rot = node->declare_parameter<std::vector<double>>(
-        "scan_matcher.T_body_lidar_rot", params.T_body_lidar_rot);
+
     return std::make_shared<scan_matcher::IkdTreeScanMatcher>(map_builder, params);
 }
 
