@@ -9,7 +9,7 @@ namespace lio_slam_shaw::factory {
 
 class FeatureExtractorFactory {
 public:
-    static core::IFeatureExtractor::SharedPtr create(rclcpp::Node::SharedPtr node);
+    static core::IFeatureExtractor::SharedPtr create(rclcpp::Node* node);
 };
 
 }  // namespace lio_slam_shaw::factory

@@ -4,7 +4,7 @@
 
 namespace lio_slam_shaw::factory {
 
-core::IMapBuilder::SharedPtr MapBuilderFactory::create(rclcpp::Node::SharedPtr node) {
+core::IMapBuilder::SharedPtr MapBuilderFactory::create(rclcpp::Node* node) {
     std::string type = node->declare_parameter<std::string>("map_builder_type", "ikd_tree");
 
     map_builder::IkdTreeMapBuilderParams params;

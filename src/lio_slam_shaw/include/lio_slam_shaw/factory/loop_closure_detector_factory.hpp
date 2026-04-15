@@ -11,7 +11,7 @@ namespace lio_slam_shaw::factory {
 
 class LoopClosureDetectorFactory {
 public:
-    static core::ILoopClosureDetector::SharedPtr create(rclcpp::Node::SharedPtr node);
+    static core::ILoopClosureDetector::SharedPtr create(rclcpp::Node* node);
 };
 
 }  // namespace lio_slam_shaw::factory

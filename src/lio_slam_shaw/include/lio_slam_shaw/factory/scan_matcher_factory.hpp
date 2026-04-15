@@ -10,7 +10,7 @@ namespace lio_slam_shaw::factory {
 
 class ScanMatcherFactory {
 public:
-    static core::IScanMatcher::SharedPtr create(rclcpp::Node::SharedPtr node,
+    static core::IScanMatcher::SharedPtr create(rclcpp::Node* node,
                                                 core::IMapBuilder::SharedPtr map_builder);
 };
 

@@ -15,15 +15,13 @@ namespace lio_slam_shaw {
 SlamNode::SlamNode(const rclcpp::NodeOptions& options) : Node("lio_slam_shaw_node", options) {
     RCLCPP_INFO(get_logger(), "Initializing LIO-SLAM-Shaw Node...");
 
-    slam_processor_ = factory::SlamFactory::create(shared_from_this());
-
     const std::string lidar_type = declare_parameter("lidar_type", "Velodyne");
-    const std::string lidar_topic = declare_parameter("lidar_topic", "");
+    const std::string lidar_topic = declare_parameter("lidar_topic", "/points_raw");
     if (lidar_topic.empty()) {
         RCLCPP_ERROR(get_logger(), "Lidar topic is not specified.");
         throw std::runtime_error("Lidar topic is not specified");
     }
-    const std::string imu_topic = declare_parameter("imu_topic", "");
+    const std::string imu_topic = declare_parameter("imu_topic", "/imu_raw");
     if (imu_topic.empty()) {
         RCLCPP_ERROR(get_logger(), "Imu topic is not specified.");
         throw std::runtime_error("Imu topic is not specified");
@@ -62,6 +60,7 @@ SlamNode::SlamNode(const rclcpp::NodeOptions& options) : Node("lio_slam_shaw_nod
                      lidar_type.c_str());
         throw std::runtime_error("Invalid Lidar Type");
     }
+    RCLCPP_INFO(get_logger(), "Created Lidar Subscription: %s", lidar_type.c_str());
 
     odom_publisher_ = create_publisher<nav_msgs::msg::Odometry>("odom", 10);
     cloud_publisher_ = create_publisher<sensor_msgs::msg::PointCloud2>("scan", 10);
@@ -70,6 +69,8 @@ SlamNode::SlamNode(const rclcpp::NodeOptions& options) : Node("lio_slam_shaw_nod
         imu_topic, 100, std::bind(&SlamNode::imuCallback, this, std::placeholders::_1));
 
     tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
+
+    slam_processor_ = factory::SlamFactory::create(this);
 
     slam_processor_->registerOdometryCallback(
         [this](const core::NavState& odom_state) { publishOdometry(odom_state); });
@@ -93,7 +94,9 @@ SlamNode::SlamNode(const rclcpp::NodeOptions& options) : Node("lio_slam_shaw_nod
         RCLCPP_INFO(get_logger(), "All extrinsic TFs received and set to SlamProcessor.");
     }
 
-    RCLCPP_INFO(get_logger(), "LIO-SLAM-Shaw Node initialized.");
+    slam_processor_->start();
+
+    RCLCPP_INFO(get_logger(), "LIO-SLAM-Shaw Node started.");
 }
 
 SlamNode::~SlamNode() {

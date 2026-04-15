@@ -9,7 +9,7 @@ namespace lio_slam_shaw::factory {
 
 class SlamFactory {
 public:
-    static core::SlamProcessor::SharedPtr create(rclcpp::Node::SharedPtr node);
+    static core::SlamProcessor::SharedPtr create(rclcpp::Node* node);
 };
 
 }  // namespace lio_slam_shaw::factory

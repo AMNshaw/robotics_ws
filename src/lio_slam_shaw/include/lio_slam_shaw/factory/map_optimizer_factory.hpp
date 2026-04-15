@@ -9,7 +9,7 @@ namespace lio_slam_shaw::factory {
 
 class MapOptimizerFactory {
 public:
-    static core::IMapOptimizer::SharedPtr create(rclcpp::Node::SharedPtr node);
+    static core::IMapOptimizer::SharedPtr create(rclcpp::Node* node);
 };
 
 }  // namespace lio_slam_shaw::factory

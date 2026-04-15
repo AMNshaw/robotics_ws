@@ -4,7 +4,7 @@
 
 namespace lio_slam_shaw::factory {
 
-core::IMapOptimizer::SharedPtr MapOptimizerFactory::create(rclcpp::Node::SharedPtr node) {
+core::IMapOptimizer::SharedPtr MapOptimizerFactory::create(rclcpp::Node* node) {
     const std::string type = node->declare_parameter<std::string>("map_optimizer_type", "gtsam");
 
     if (type == "gtsam") {

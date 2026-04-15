@@ -4,10 +4,13 @@
 
 namespace lio_slam_shaw::factory {
 
-core::IScanMatcher::SharedPtr ScanMatcherFactory::create(rclcpp::Node::SharedPtr node,
+core::IScanMatcher::SharedPtr ScanMatcherFactory::create(rclcpp::Node* node,
                                                          core::IMapBuilder::SharedPtr map_builder) {
     scan_matcher::IkdTreeScanMatcherParams params;
-    bool use_tf_extrinsic = node->declare_parameter<bool>("use_tf_extrinsic", false);
+    if (!node->has_parameter("use_tf_extrinsic")) {
+        node->declare_parameter<bool>("use_tf_extrinsic", false);
+    }
+    bool use_tf_extrinsic = node->get_parameter("use_tf_extrinsic").as_bool();
     if (!use_tf_extrinsic) {
         params.T_base_lidar_trans =
             node->declare_parameter<std::vector<double>>("T_base_lidar_trans", {0.0, 0.0, 0.0});

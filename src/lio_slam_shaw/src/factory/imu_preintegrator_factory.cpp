@@ -4,11 +4,14 @@
 
 namespace lio_slam_shaw::factory {
 
-core::IImuPreintegrator::SharedPtr ImuPreintegratorFactory::create(rclcpp::Node::SharedPtr node) {
+core::IImuPreintegrator::SharedPtr ImuPreintegratorFactory::create(rclcpp::Node* node) {
     std::string type = node->declare_parameter<std::string>("imu_preintegrator_type", "gtsam");
 
     GtsamImuPreintegratorParams params;
-    bool use_tf_extrinsic = node->declare_parameter<bool>("use_tf_extrinsic", false);
+    if (!node->has_parameter("use_tf_extrinsic")) {
+        node->declare_parameter<bool>("use_tf_extrinsic", false);
+    }
+    bool use_tf_extrinsic = node->get_parameter("use_tf_extrinsic").as_bool();
     if (!use_tf_extrinsic) {
         params.T_base_imu_trans =
             node->declare_parameter<std::vector<double>>("T_base_imu_trans", {0.0, 0.0, 0.0});

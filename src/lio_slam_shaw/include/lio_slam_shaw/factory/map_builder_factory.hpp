@@ -9,7 +9,7 @@ namespace lio_slam_shaw::factory {
 
 class MapBuilderFactory {
 public:
-    static core::IMapBuilder::SharedPtr create(rclcpp::Node::SharedPtr node);
+    static core::IMapBuilder::SharedPtr create(rclcpp::Node* node);
 };
 }  // namespace lio_slam_shaw::factory
 

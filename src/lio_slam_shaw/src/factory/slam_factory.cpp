@@ -13,7 +13,7 @@
 
 namespace lio_slam_shaw::factory {
 
-core::SlamProcessor::SharedPtr SlamFactory::create(rclcpp::Node::SharedPtr node) {
+core::SlamProcessor::SharedPtr SlamFactory::create(rclcpp::Node* node) {
     auto sensor_data_manager = std::make_shared<core::SensorDataManager>();
     auto imu_preintegrator = ImuPreintegratorFactory::create(node);
 

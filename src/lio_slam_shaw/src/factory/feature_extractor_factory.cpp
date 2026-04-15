@@ -4,7 +4,7 @@
 
 namespace lio_slam_shaw::factory {
 
-core::IFeatureExtractor::SharedPtr FeatureExtractorFactory::create(rclcpp::Node::SharedPtr node) {
+core::IFeatureExtractor::SharedPtr FeatureExtractorFactory::create(rclcpp::Node* node) {
     std::string type =
         node->declare_parameter<std::string>("feature_extractor_type", "passthrough");
 

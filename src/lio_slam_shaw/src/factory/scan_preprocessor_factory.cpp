@@ -4,7 +4,7 @@
 
 namespace lio_slam_shaw::factory {
 
-core::IScanPreprocessor::SharedPtr ScanPreprocessorFactory::create(rclcpp::Node::SharedPtr node) {
+core::IScanPreprocessor::SharedPtr ScanPreprocessorFactory::create(rclcpp::Node* node) {
     std::string type = node->declare_parameter<std::string>("scan_preprocessor_type", "deskew");
 
     if (type == "deskew") {
@@ -26,8 +26,7 @@ core::IScanPreprocessor::SharedPtr ScanPreprocessorFactory::createDefault() {
     return std::make_shared<PassthroughPreprocessor>();
 }
 
-core::IScanPreprocessor::SharedPtr ScanPreprocessorFactory::createDeskew(
-    rclcpp::Node::SharedPtr node) {
+core::IScanPreprocessor::SharedPtr ScanPreprocessorFactory::createDeskew(rclcpp::Node* node) {
     lidar_preprocessor::ImuDeskewPreprocessorParams params;
     params.voxel_leaf_size = static_cast<float>(
         node->declare_parameter<double>("scan_preprocessor.voxel_leaf_size", 0.2));

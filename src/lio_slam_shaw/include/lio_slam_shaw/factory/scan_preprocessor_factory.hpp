@@ -9,11 +9,11 @@ namespace lio_slam_shaw::factory {
 
 class ScanPreprocessorFactory {
 public:
-    static core::IScanPreprocessor::SharedPtr create(rclcpp::Node::SharedPtr node);
+    static core::IScanPreprocessor::SharedPtr create(rclcpp::Node* node);
 
 private:
     static core::IScanPreprocessor::SharedPtr createDefault();
-    static core::IScanPreprocessor::SharedPtr createDeskew(rclcpp::Node::SharedPtr node);
+    static core::IScanPreprocessor::SharedPtr createDeskew(rclcpp::Node* node);
 };
 
 }  // namespace lio_slam_shaw::factory
