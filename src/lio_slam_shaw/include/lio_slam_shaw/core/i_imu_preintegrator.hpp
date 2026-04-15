@@ -21,6 +21,8 @@ public:
         const ScanMatchResult& scan_match_result, const std::vector<core::ImuData>& opt_imu_segment,
         const std::vector<core::ImuData>& reprop_imu_segment) = 0;
 
+    virtual void setImuExtrinsics(const Eigen::Isometry3d& T_base_imu) = 0;
+
     virtual NavState getLatestPredictState() const = 0;
     virtual std::vector<NavState> getNavStateQueueSnapshot() const = 0;
     virtual std::optional<NavState> queryNavState(const Timestamp& t) const = 0;

@@ -28,6 +28,9 @@ public:
     // clang-format on
     ~FrontEnd() = default;
 
+    void setLidarExtrinsics(const Eigen::Isometry3d& T_base_lidar);
+    void setImuExtrinsics(const Eigen::Isometry3d& T_base_imu);
+
     void feed_lidar(const LidarData& lidar);
     void feed_imu(const ImuData& imu);
 

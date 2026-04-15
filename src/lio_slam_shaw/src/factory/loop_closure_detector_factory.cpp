@@ -57,10 +57,10 @@ core::ILoopClosureDetector::SharedPtr LoopClosureDetectorFactory::create(
         scan_matcher_params.degenerate_threshold =
             node->declare_parameter<double>("loop_closure.scan_matcher.degenerate_threshold",
                                             scan_matcher_params.degenerate_threshold);
-        scan_matcher_params.T_body_lidar_trans = node->declare_parameter<std::vector<double>>(
-            "loop_closure.scan_matcher.T_body_lidar_trans", scan_matcher_params.T_body_lidar_trans);
-        scan_matcher_params.T_body_lidar_rot = node->declare_parameter<std::vector<double>>(
-            "loop_closure.scan_matcher.T_body_lidar_rot", scan_matcher_params.T_body_lidar_rot);
+        scan_matcher_params.T_base_lidar_trans = node->declare_parameter<std::vector<double>>(
+            "loop_closure.scan_matcher.T_body_lidar_trans", scan_matcher_params.T_base_lidar_trans);
+        scan_matcher_params.T_base_lidar_rot = node->declare_parameter<std::vector<double>>(
+            "loop_closure.scan_matcher.T_body_lidar_rot", scan_matcher_params.T_base_lidar_rot);
 
         IkdTreeLoopClosureDetectorParams loop_closure_params;
         loop_closure_params.search_radius =

@@ -9,10 +9,10 @@ core::IScanMatcher::SharedPtr ScanMatcherFactory::create(rclcpp::Node::SharedPtr
     scan_matcher::IkdTreeScanMatcherParams params;
     bool use_tf_extrinsic = node->declare_parameter<bool>("use_tf_extrinsic", false);
     if (!use_tf_extrinsic) {
-        params.T_body_lidar_trans = node->declare_parameter<std::vector<double>>(
-            "T_base_lidar_trans", params.T_body_lidar_trans);
-        params.T_body_lidar_rot = node->declare_parameter<std::vector<double>>(
-            "T_base_lidar_rot", params.T_body_lidar_rot);
+        params.T_base_lidar_trans =
+            node->declare_parameter<std::vector<double>>("T_base_lidar_trans", {0.0, 0.0, 0.0});
+        params.T_base_lidar_rot =
+            node->declare_parameter<std::vector<double>>("T_base_lidar_rot", {1.0, 0.0, 0.0, 0.0});
     }
     params.k_neighbors =
         node->declare_parameter<int>("scan_matcher.k_neighbors", params.k_neighbors);

@@ -133,7 +133,7 @@ void GtsamImuPreintegrator::updateBiasAndRepropagateImus(
     graph_node_index_++;
 }
 
-core::NavState GtsamImuPreintegrator::getLatestNavState() const {
+core::NavState GtsamImuPreintegrator::getLatestPredictState() const {
     std::lock_guard<std::mutex> lock(mtx_);
     return curr_state_;
 }

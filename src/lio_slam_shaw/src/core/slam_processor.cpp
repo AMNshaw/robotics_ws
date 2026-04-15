@@ -35,9 +35,15 @@ void SlamProcessor::feedImu(const ImuData& imu) {
     sync_cv_.notify_one();
 
     if (odom_callback_) {
-        const auto state = front_end_->getLatestNavState();
+        const auto state = front_end_->getLatestOdomState();
         odom_callback_(state);
     }
+}
+
+void SlamProcessor::setExtrinsics(const Eigen::Isometry3d& T_base_lidar,
+                                  const Eigen::Isometry3d& T_base_imu) {
+    front_end_->setLidarExtrinsics(T_base_lidar);
+    front_end_->setImuExtrinsics(T_base_imu);
 }
 
 void SlamProcessor::registerOdometryCallback(const SlamProcessor::OdometryCallback& callback) {

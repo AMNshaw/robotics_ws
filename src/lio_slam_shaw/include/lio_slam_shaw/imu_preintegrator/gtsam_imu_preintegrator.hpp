@@ -38,12 +38,16 @@ public:
     explicit GtsamImuPreintegrator(const GtsamImuPreintegratorParams& params);
     ~GtsamImuPreintegrator() override = default;
 
+    void setImuExtrinsics(const Eigen::Isometry3d& T_base_imu) override {
+        T_base_imu_ = toGtsamPose(T_base_imu);
+        T_imu_base_ = T_base_imu_.inverse();
+    }
     void integrateImusAndPredict(const std::vector<core::ImuData>& imus) override;
     void updateBiasAndRepropagateImus(
         const core::ScanMatchResult& scan_match_result,
         const std::vector<core::ImuData>& opt_imu_segment,
         const std::vector<core::ImuData>& reprop_imu_segment) override;
-    core::NavState getLatestNavState() const override;
+    core::NavState getLatestPredictState() const override;
     std::optional<core::NavState> queryNavState(const core::Timestamp& t) const override;
     std::vector<core::NavState> getNavStateQueueSnapshot() const override;
 

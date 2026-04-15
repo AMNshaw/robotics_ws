@@ -16,6 +16,14 @@ FrontEnd::FrontEnd(SensorDataManager::SharedPtr data_manager,
     last_processed_imu_time_ = Timestamp::min();
 }
 
+void FrontEnd::setLidarExtrinsics(const Eigen::Isometry3d& T_base_lidar) {
+    scan_matcher_->setLidarExtrinsics(T_base_lidar);
+}
+
+void FrontEnd::setImuExtrinsics(const Eigen::Isometry3d& T_base_imu) {
+    imu_preintegrator_->setImuExtrinsics(T_base_imu);
+}
+
 void FrontEnd::feed_lidar(const LidarData& lidar) { data_manager_->addLidarData(lidar); }
 
 void FrontEnd::feed_imu(const ImuData& imu) {

@@ -17,8 +17,8 @@ struct IkdTreeScanMatcherParams {
     double convergence_threshold = 1e-5;
     int min_valid_points = 50;
     double degenerate_threshold = 100.0;
-    std::vector<double> T_body_lidar_trans = {0.0, 0.0, 0.0};
-    std::vector<double> T_body_lidar_rot = {0.0, 0.0, 0.0, 1.0};
+    std::vector<double> T_base_lidar_trans = {0.0, 0.0, 0.0};
+    std::vector<double> T_base_lidar_rot = {1.0, 0.0, 0.0, 0.0};
 };
 
 class IkdTreeScanMatcher : public core::IScanMatcher {
@@ -28,6 +28,9 @@ public:
     explicit IkdTreeScanMatcher(core::IMapBuilder::SharedPtr map_builder,
                                 const IkdTreeScanMatcherParams& params = {});
 
+    void setLidarExtrinsics(const Eigen::Isometry3d& T_base_lidar) override {
+        T_base_lidar_ = T_base_lidar;
+    }
     core::ScanMatchResult match(const core::FeatureSet& features,
                                 const core::NavState& initial_guess) override;
 
@@ -42,7 +45,7 @@ private:
 
     core::IMapBuilder::SharedPtr map_builder_;
     IkdTreeScanMatcherParams params_;
-    Eigen::Isometry3d T_body_lidar_ = Eigen::Isometry3d::Identity();
+    Eigen::Isometry3d T_base_lidar_ = Eigen::Isometry3d::Identity();
 };
 
 }  // namespace lio_slam_shaw::scan_matcher

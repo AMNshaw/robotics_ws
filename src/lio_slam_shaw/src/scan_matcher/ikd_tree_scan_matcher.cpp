@@ -8,12 +8,12 @@ namespace lio_slam_shaw::scan_matcher {
 IkdTreeScanMatcher::IkdTreeScanMatcher(core::IMapBuilder::SharedPtr map_builder,
                                        const IkdTreeScanMatcherParams& params)
     : map_builder_(std::move(map_builder)), params_(params) {
-    const auto& t = params.T_body_lidar_trans;
-    const auto& q = params.T_body_lidar_rot;
-    T_body_lidar_ = Eigen::Isometry3d::Identity();
-    T_body_lidar_.linear() =
-        Eigen::Quaterniond(q[3], q[0], q[1], q[2]).normalized().toRotationMatrix();
-    T_body_lidar_.translation() = Eigen::Vector3d(t[0], t[1], t[2]);
+    const auto& t = params.T_base_lidar_trans;
+    const auto& q = params.T_base_lidar_rot;
+    T_base_lidar_ = Eigen::Isometry3d::Identity();
+    T_base_lidar_.linear() =
+        Eigen::Quaterniond(q[0], q[1], q[2], q[3]).normalized().toRotationMatrix();
+    T_base_lidar_.translation() = Eigen::Vector3d(t[0], t[1], t[2]);
 }
 
 core::ScanMatchResult IkdTreeScanMatcher::match(const core::FeatureSet& features,
@@ -30,7 +30,7 @@ core::ScanMatchResult IkdTreeScanMatcher::match(const core::FeatureSet& features
     int n_valid_final = 0;
 
     for (int iter = 0; iter < params_.max_iterations; ++iter) {
-        const Eigen::Isometry3d T_map_lidar = result.pose * T_body_lidar_;
+        const Eigen::Isometry3d T_map_lidar = result.pose * T_base_lidar_;
         auto nn_results = map_builder_->queryNearestPoints(cloud, T_map_lidar, params_.k_neighbors);
 
         Eigen::Matrix<double, 6, 6> H = Eigen::Matrix<double, 6, 6>::Zero();

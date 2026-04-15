@@ -1,7 +1,11 @@
 #include "lio_slam_shaw/slam_node.hpp"
 
+#include <tf2_ros/buffer.h>
+#include <tf2_ros/transform_listener.h>
+
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <set>
+#include <tf2_eigen/tf2_eigen.hpp>
 
 #include "lio_slam_shaw/factory/slam_factory.hpp"
 #include "lio_slam_shaw/lidar_msg_adapter.hpp"
@@ -35,12 +39,6 @@ SlamNode::SlamNode(const rclcpp::NodeOptions& options) : Node("lio_slam_shaw_nod
         imu_frame_id = declare_parameter("imu_frame_id", "imu_link");
     }
 
-    odom_publisher_ = create_publisher<nav_msgs::msg::Odometry>("odom", 10);
-    cloud_publisher_ = create_publisher<sensor_msgs::msg::PointCloud2>("scan", 10);
-
-    imu_subscription_ = create_subscription<sensor_msgs::msg::Imu>(
-        imu_topic, 100, std::bind(&SlamNode::imuCallback, this, std::placeholders::_1));
-
     if (lidar_type == "Velodyne") {
         velodyne_subscription_ = create_subscription<sensor_msgs::msg::PointCloud2>(
             lidar_topic, 10,
@@ -65,12 +63,35 @@ SlamNode::SlamNode(const rclcpp::NodeOptions& options) : Node("lio_slam_shaw_nod
         throw std::runtime_error("Invalid Lidar Type");
     }
 
+    odom_publisher_ = create_publisher<nav_msgs::msg::Odometry>("odom", 10);
+    cloud_publisher_ = create_publisher<sensor_msgs::msg::PointCloud2>("scan", 10);
+
+    imu_subscription_ = create_subscription<sensor_msgs::msg::Imu>(
+        imu_topic, 100, std::bind(&SlamNode::imuCallback, this, std::placeholders::_1));
+
     tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
     slam_processor_->registerOdometryCallback(
         [this](const core::NavState& odom_state) { publishOdometry(odom_state); });
     slam_processor_->registerVisualizationCallback(
         [this](const core::VisualizationData& viz_data) { publishVisualization(viz_data); });
+
+    if (use_tf_extrinsic) {
+        auto tf_buffer = std::make_unique<tf2_ros::Buffer>(this->get_clock());
+        auto tf_listener = std::make_shared<tf2_ros::TransformListener>(*tf_buffer);
+        RCLCPP_INFO(get_logger(), "Waiting for extrinsic TF from %s to %s...", imu_frame_id.c_str(),
+                    lidar_frame_id.c_str());
+        geometry_msgs::msg::TransformStamped transform_stamped;
+        transform_stamped = tf_buffer->lookupTransform(
+            tracking_frame_id, lidar_frame_id, tf2::TimePointZero, tf2::durationFromSec(5.0));
+        const auto T_base_lidar = tf2::transformToEigen(transform_stamped.transform);
+        transform_stamped = tf_buffer->lookupTransform(
+            tracking_frame_id, imu_frame_id, tf2::TimePointZero, tf2::durationFromSec(5.0));
+        const auto T_base_imu = tf2::transformToEigen(transform_stamped.transform);
+
+        slam_processor_->setExtrinsics(T_base_lidar, T_base_imu);
+        RCLCPP_INFO(get_logger(), "All extrinsic TFs received and set to SlamProcessor.");
+    }
 
     RCLCPP_INFO(get_logger(), "LIO-SLAM-Shaw Node initialized.");
 }

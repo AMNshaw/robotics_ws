@@ -10,10 +10,10 @@ core::IImuPreintegrator::SharedPtr ImuPreintegratorFactory::create(rclcpp::Node:
     GtsamImuPreintegratorParams params;
     bool use_tf_extrinsic = node->declare_parameter<bool>("use_tf_extrinsic", false);
     if (!use_tf_extrinsic) {
-        params.T_base_imu_trans = node->declare_parameter<std::vector<double>>(
-            "T_base_imu_trans", params.T_base_imu_trans);
+        params.T_base_imu_trans =
+            node->declare_parameter<std::vector<double>>("T_base_imu_trans", {0.0, 0.0, 0.0});
         params.T_base_imu_rot =
-            node->declare_parameter<std::vector<double>>("T_base_imu_rot", params.T_base_imu_rot);
+            node->declare_parameter<std::vector<double>>("T_base_imu_rot", {1.0, 0.0, 0.0, 0.0});
     }
 
     params.gravity = node->declare_parameter<double>("imu.gravity", params.gravity);
