@@ -58,6 +58,9 @@ std::optional<LidarFrame::SharedPtr> FrontEnd::processPipeline() {
 
     auto state_odom = imu_preintegrator_->getLatestPredictState();
     auto state_map = state_odom;
+    // Transform the initial guess from the odom frame to the map frame.
+    // This is required because our scan matching (Scan-to-Map) aligns the current
+    // features against the global/local map to eliminate accumulated drift.
     state_map.pose = T_map_odom_ * state_odom.pose;
     auto matched_result_in_map = scan_matcher_->match(features, state_map);
     auto matched_result_in_odom = matched_result_in_map;
@@ -65,6 +68,10 @@ std::optional<LidarFrame::SharedPtr> FrontEnd::processPipeline() {
 
     std::vector<ImuData> reprop_imu_batch;
     data_manager_->getBatchImuData(lidar.timestamp, last_processed_imu_time_, reprop_imu_batch);
+
+    // IMU preintegration correction must remain in the odom frame.
+    // Applying map-frame feedback (like loop closures) introduces pose jumps and discontinuities,
+    // which leads to large biases and potential preintegrator divergence.
     imu_preintegrator_->updateBiasAndRepropagateImus(matched_result_in_odom, opt_imu_batch,
                                                      reprop_imu_batch);
 
