@@ -18,8 +18,12 @@ std::optional<core::Keyframe::SharedPtr> IkdTreeMapBuilder::addFrame(
 
     const Eigen::Isometry3d& T_map_body = frame->matched_result.pose;
 
+    std::cerr << "IKD log1" << std::endl;
+
     size_t n_points = cloud_body->size();
     KD_TREE<core::PointXYZIRT>::PointVector points_world(n_points);
+
+    std::cerr << "IKD log2" << std::endl;
 
 #pragma omp parallel for num_threads(4) schedule(dynamic)
     for (size_t i = 0; i < n_points; ++i) {
@@ -31,8 +35,16 @@ std::optional<core::Keyframe::SharedPtr> IkdTreeMapBuilder::addFrame(
         points_world[i].y = static_cast<float>(pw.y());
         points_world[i].z = static_cast<float>(pw.z());
     }
+    std::cerr << "IKD log3: OpenMP loop finished smoothly." << std::endl;
     auto local_tree = ikd_tree_;
-    local_tree->Add_Points(points_world, true);
+
+    if (is_first_frame_) {
+        local_tree->Build(points_world);
+        is_first_frame_ = false;
+    } else
+        local_tree->Add_Points(points_world, true);
+
+    std::cerr << "Added " << points_world.size() << " points to the local IKD tree." << std::endl;
 
     if (is_updating_map_.load()) {
         KD_TREE<core::PointXYZIRT>::PointVector points_corrected = points_world;

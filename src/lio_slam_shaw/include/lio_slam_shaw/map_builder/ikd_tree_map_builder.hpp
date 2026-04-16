@@ -49,6 +49,9 @@ private:
     bool isNewKeyframe(const Eigen::Isometry3d& pose) const;
 
     IkdTreeMapBuilderParams params_;
+
+    bool is_first_frame_ = true;
+    mutable std::shared_mutex ikd_tree_mutex_;
     std::shared_ptr<KD_TREE<core::PointXYZIRT>> ikd_tree_;
     std::shared_ptr<KD_TREE<core::PointXYZIRT>> temp_ikd_tree_;
 

@@ -56,13 +56,27 @@ std::optional<LidarFrame::SharedPtr> FrontEnd::processPipeline() {
 
     LidarData lidar;
     std::vector<ImuData> opt_imu_batch;
+
+    std::cerr << "Checking for synced data in FrontEnd pipeline..." << std::endl;
+
     if (!data_manager_->getSyncedData(lidar, opt_imu_batch)) {
         return std::nullopt;
     }
 
+    std::cerr << "Synced data found. Processing lidar timestamp: "
+              << lidar.timestamp.time_since_epoch().count() << std::endl;
+
     auto nav_snapshot = imu_preintegrator_->getNavStateQueueSnapshot();
+
+    std::cerr << "IMU snapshot size: " << nav_snapshot.size() << std::endl;
+
     auto processed_cloud = scan_preprocessor_->processCloud(nav_snapshot, lidar);
+
+    std::cerr << "Scan preprocessing done. Extracting features..." << std::endl;
+
     auto features = feature_extractor_->extract(processed_cloud);
+
+    std::cerr << "Feature extraction done. Performing scan matching..." << std::endl;
 
     auto state_odom = imu_preintegrator_->getLatestPredictState();
     auto state_map = state_odom;
@@ -70,9 +84,14 @@ std::optional<LidarFrame::SharedPtr> FrontEnd::processPipeline() {
     // This is required because our scan matching (Scan-to-Map) aligns the current
     // features against the global/local map to eliminate accumulated drift.
     state_map.pose = T_map_odom_ * state_odom.pose;
+    std::cerr << "Initial guess in map frame: " << state_map.pose.translation().transpose()
+              << std::endl;
+
     auto matched_result_in_map = scan_matcher_->match(features, state_map);
     auto matched_result_in_odom = matched_result_in_map;
     matched_result_in_odom.pose = T_map_odom_.inverse() * matched_result_in_map.pose;
+    std::cerr << "Matched result in odom frame: "
+              << matched_result_in_odom.pose.translation().transpose() << std::endl;
 
     std::vector<ImuData> reprop_imu_batch;
     data_manager_->getBatchImuData(lidar.timestamp, last_processed_imu_time_, reprop_imu_batch);
@@ -82,6 +101,7 @@ std::optional<LidarFrame::SharedPtr> FrontEnd::processPipeline() {
     // which leads to large biases and potential preintegrator divergence.
     imu_preintegrator_->updateBiasAndRepropagateImus(matched_result_in_odom, opt_imu_batch,
                                                      reprop_imu_batch);
+    std::cerr << "IMU preintegration updated and repropagated." << std::endl;
 
     NavState corrected_state = state_odom;
     corrected_state.timestamp = lidar.timestamp;

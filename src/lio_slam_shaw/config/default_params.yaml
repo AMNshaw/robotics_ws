@@ -2,8 +2,8 @@
   slam_node:
     ros__parameters:
       lidar_type: "Velodyne"
-      lidar_topic: "/velodyne_points"
-      imu_topic: "/imu/data"
+      lidar_topic: "/points_raw"
+      imu_topic: "/imu_correct"
       tracking_frame_id: "base_link"
       lidar_frame_id: "lidar_link"
       imu_frame_id: "imu_link"

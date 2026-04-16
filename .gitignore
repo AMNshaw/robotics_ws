@@ -4,3 +4,5 @@ log/
 
 *.bag
 *.zip
+*.db3
+*.mcap
