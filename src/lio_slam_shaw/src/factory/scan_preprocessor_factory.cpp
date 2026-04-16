@@ -5,13 +5,13 @@
 namespace lio_slam_shaw::factory {
 
 core::IScanPreprocessor::SharedPtr ScanPreprocessorFactory::create(rclcpp::Node* node) {
-    std::string type = node->declare_parameter<std::string>("scan_preprocessor_type", "deskew");
+    std::string type = node->declare_parameter<std::string>("scan_preprocessor.type", "deskew");
 
     if (type == "deskew") {
         return createDeskew(node);
     }
     RCLCPP_WARN(node->get_logger(),
-                "Unknown scan_preprocessor_type '%s', falling back to passthrough.", type.c_str());
+                "Unknown scan_preprocessor type '%s', falling back to passthrough.", type.c_str());
     return createDefault();
 }
 

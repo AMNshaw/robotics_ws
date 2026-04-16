@@ -6,21 +6,23 @@ namespace lio_slam_shaw::factory {
 
 core::IImuPreintegrator::SharedPtr ImuPreintegratorFactory::create(
     rclcpp::Node* node, const Eigen::Isometry3d& T_base_imu) {
-    std::string type = node->declare_parameter<std::string>("imu_preintegrator_type", "gtsam");
+    std::string type = node->declare_parameter<std::string>("imu_preintegrator.type", "gtsam");
 
     GtsamImuPreintegratorParams params;
     params.T_base_imu = T_base_imu;
-    params.gravity = node->declare_parameter<double>("imu.gravity", params.gravity);
-    params.imu_acc_noise = node->declare_parameter<double>("imu.acc_noise", params.imu_acc_noise);
-    params.imu_gyr_noise = node->declare_parameter<double>("imu.gyr_noise", params.imu_gyr_noise);
-    params.imu_acc_bias_noise =
-        node->declare_parameter<double>("imu.acc_bias_noise", params.imu_acc_bias_noise);
-    params.imu_gyr_bias_noise =
-        node->declare_parameter<double>("imu.gyr_bias_noise", params.imu_gyr_bias_noise);
+    params.gravity = node->declare_parameter<double>("imu_preintegrator.gravity", params.gravity);
+    params.imu_acc_noise =
+        node->declare_parameter<double>("imu_preintegrator.acc_noise", params.imu_acc_noise);
+    params.imu_gyr_noise =
+        node->declare_parameter<double>("imu_preintegrator.gyr_noise", params.imu_gyr_noise);
+    params.imu_acc_bias_noise = node->declare_parameter<double>("imu_preintegrator.acc_bias_noise",
+                                                                params.imu_acc_bias_noise);
+    params.imu_gyr_bias_noise = node->declare_parameter<double>("imu_preintegrator.gyr_bias_noise",
+                                                                params.imu_gyr_bias_noise);
 
     if (type != "gtsam") {
         RCLCPP_WARN(node->get_logger(),
-                    "Unknown imu_preintegrator_type '%s', falling back to gtsam.", type.c_str());
+                    "Unknown imu_preintegrator type '%s', falling back to gtsam.", type.c_str());
     }
     return std::make_shared<GtsamImuPreintegrator>(params);
 }

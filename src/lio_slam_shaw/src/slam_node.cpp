@@ -52,7 +52,7 @@ SlamNode::SlamNode(const rclcpp::NodeOptions& options) : Node("lio_slam_shaw_nod
     }
     RCLCPP_INFO(get_logger(), "Created Lidar Subscription: %s", lidar_type.c_str());
 
-    bool use_tf_extrinsic = declare_parameter("use_tf_extrinsic", false);
+    bool use_tf_extrinsic = declare_parameter("extrinsics.use_tf_extrinsic", false);
     tracking_frame_id_ = declare_parameter("tracking_frame_id", "base_link");
     lidar_frame_id_ = declare_parameter("lidar_frame_id", "lidar_link");
     imu_frame_id_ = declare_parameter("imu_frame_id", "imu_link");
@@ -75,11 +75,14 @@ SlamNode::SlamNode(const rclcpp::NodeOptions& options) : Node("lio_slam_shaw_nod
         RCLCPP_INFO(get_logger(), "All extrinsic TFs received and set to SlamProcessor.");
     } else {
         tf_static_broadcaster_ = std::make_shared<tf2_ros::StaticTransformBroadcaster>(this);
-        std::vector<double> T_base_lidar_trans =
-            get_parameter("T_base_lidar_trans").as_double_array();
-        std::vector<double> T_base_lidar_rot = get_parameter("T_base_lidar_rot").as_double_array();
-        std::vector<double> T_base_imu_trans = get_parameter("T_base_imu_trans").as_double_array();
-        std::vector<double> T_base_imu_rot = get_parameter("T_base_imu_rot").as_double_array();
+        std::vector<double> T_base_lidar_trans = declare_parameter<std::vector<double>>(
+            "extrinsics.T_base_lidar_trans", {0.0, 0.0, 0.0});
+        std::vector<double> T_base_lidar_rot = declare_parameter<std::vector<double>>(
+            "extrinsics.T_base_lidar_rot", {0.0, 0.0, 0.0, 1.0});
+        std::vector<double> T_base_imu_trans =
+            declare_parameter<std::vector<double>>("extrinsics.T_base_imu_trans", {0.0, 0.0, 0.0});
+        std::vector<double> T_base_imu_rot = declare_parameter<std::vector<double>>(
+            "extrinsics.T_base_imu_rot", {0.0, 0.0, 0.0, 1.0});
 
         if (T_base_lidar_trans.size() != 3 || T_base_lidar_rot.size() != 4) {
             RCLCPP_ERROR(get_logger(),

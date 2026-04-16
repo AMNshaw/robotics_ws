@@ -19,7 +19,7 @@ def generate_launch_description():
             name='slam_node',
             output='screen',
             parameters=[
-                os.path.join(get_package_share_directory('lio_slam_shaw'), 'config', 'params.yaml')
+                os.path.join(get_package_share_directory('lio_slam_shaw'), 'config', 'default_params.yaml')
             ]
         )
         

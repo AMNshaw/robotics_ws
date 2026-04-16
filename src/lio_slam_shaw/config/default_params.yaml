@@ -1,0 +1,49 @@
+/**:
+  slam_node:
+    ros__parameters:
+      lidar_type: "Velodyne"
+      lidar_topic: "/velodyne_points"
+      imu_topic: "/imu/data"
+      tracking_frame_id: "base_link"
+      lidar_frame_id: "lidar_link"
+      imu_frame_id: "imu_link"
+
+      extrinsics:
+        use_tf_extrinsic: false
+        T_base_lidar_trans: [0.0, 0.0, 0.0]
+        T_base_lidar_rot: [1.0, 0.0, 0.0, 0.0]
+        T_base_imu_trans: [0.0, 0.0, 0.0]
+        T_base_imu_rot: [1.0, 0.0, 0.0, 0.0]
+
+      imu_preintegrator:
+        type: "gtsam"
+        gravity: 9.81
+        imu_acc_noise: 0.1
+        imu_gyr_noise: 0.01
+        imu_acc_bias_noise: 0.001
+        imu_gyr_bias_noise: 0.0001
+
+      scan_preprocessor:
+        type: "deskew"
+        voxel_size: 0.1
+
+      feature_extractor:
+        type: "passthrough"
+
+      scan_matcher:
+        type: "ikd_tree"
+        k_neighbors: 5
+        max_iterations: 30
+        convergence_threshold: 1e-5
+        min_valid_points: 50
+        degenerate_threshold: 100.0
+
+      map_builder:
+        keyframe_distance_threshold: 1.0
+        keyframe_rotation_threshold: 0.2
+        ikd_delete_param: 0.5
+        ikd_balance_param: 0.6
+        ikd_downsample_size: 0.3
+        max_search_dist: 2.0
+        min_plane_points: 5
+        plane_valid_threshold: 0.1
