@@ -86,7 +86,7 @@ std::optional<LidarFrame::SharedPtr> FrontEnd::processPipeline() {
     state_map.pose = T_map_odom_ * state_odom.pose;
     std::cerr << "Initial guess in map frame: " << state_map.pose.translation().transpose()
               << std::endl;
-
+    std::cerr << "[Debug] Points entering matcher: " << features.raw_deskewed->size() << std::endl;
     auto matched_result_in_map = scan_matcher_->match(features, state_map);
     auto matched_result_in_odom = matched_result_in_map;
     matched_result_in_odom.pose = T_map_odom_.inverse() * matched_result_in_map.pose;

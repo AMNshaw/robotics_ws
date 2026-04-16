@@ -67,6 +67,7 @@ void GtsamImuPreintegrator::integrateImusAndPredictNoLock(const std::vector<core
 
         if (last_imu_.timestamp.time_since_epoch().count() != 0) {
             std::chrono::duration<double> diff = imu.timestamp - last_imu_.timestamp;
+
             dt = diff.count();
             if (dt <= 0.0 || dt > 0.1) dt = 1.0 / 500.0;
 
@@ -85,6 +86,7 @@ void GtsamImuPreintegrator::integrateImusAndPredictNoLock(const std::vector<core
                                        last_optimized_bias_.gyroscope().y(),
                                        last_optimized_bias_.gyroscope().z());
         auto nav_state = fromGtsamNavState(imu.timestamp, gtsam_mid);
+        nav_state.pose = nav_state.pose * Eigen::Isometry3d(T_imu_base_.matrix());
         nav_state.angular_vel =
             Eigen::Matrix3d(T_base_imu_.rotation().matrix().cast<double>()) * gyr_corrected;
         nav_state_queue_.push_back(nav_state);

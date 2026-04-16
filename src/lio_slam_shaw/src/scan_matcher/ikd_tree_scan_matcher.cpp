@@ -56,7 +56,7 @@ core::ScanMatchResult IkdTreeScanMatcher::match(const core::FeatureSet& features
                                                     params_.max_search_dist, neighbors, distances))
                 continue;
 
-            if (static_cast<int>(neighbors.size()) > params_.min_plane_points) {
+            if (static_cast<int>(neighbors.size()) >= params_.min_plane_points) {
                 nearest_planes[i] = fitPlane(
                     neighbors, Eigen::Vector3d(query_map_pt.x, query_map_pt.y, query_map_pt.z));
             } else {
@@ -72,7 +72,9 @@ core::ScanMatchResult IkdTreeScanMatcher::match(const core::FeatureSet& features
             if (!n.valid) continue;
 
             Eigen::Vector3d normal = n.normal;
-            if (normal.dot(n.point_in_map) > 0) {
+            Eigen::Vector3d dir_to_sensor = t_map_lidar - n.point_in_map;
+
+            if (normal.dot(dir_to_sensor) < 0) {
                 normal = -normal;
             }
 
@@ -80,7 +82,8 @@ core::ScanMatchResult IkdTreeScanMatcher::match(const core::FeatureSet& features
 
             Eigen::Matrix<double, 6, 1> J;
             J.head<3>() = normal;
-            J.tail<3>() = n.point_in_map.cross(normal);
+            Eigen::Vector3d pt_diff = n.point_in_map - t_map_lidar;
+            J.tail<3>() = pt_diff.cross(normal);
 
             H += J * J.transpose();
             b += J * r;
@@ -94,10 +97,18 @@ core::ScanMatchResult IkdTreeScanMatcher::match(const core::FeatureSet& features
 
         Eigen::Matrix<double, 6, 1> dx = H.ldlt().solve(-b);
 
-        result.pose = applyLieUpdate(result.pose, dx);
+        if (dx.hasNaN()) {
+            std::cerr << "[Warning] Solver produced NaN, aborting iteration." << std::endl;
+            break;
+        }
+
+        result.pose = applyLieUpdate(result.pose, dx, t_map_lidar);
 
         H_final = H;
         n_valid_final = n_valid;
+
+        std::cerr << "Iteration " << iter << ": dx norm = " << dx.norm()
+                  << ", valid points = " << n_valid << std::endl;
 
         if (dx.norm() < params_.convergence_threshold) {
             result.is_converged = true;
@@ -144,25 +155,26 @@ NearestPlaneResult IkdTreeScanMatcher::fitPlane(
     };
 }
 
-Eigen::Isometry3d IkdTreeScanMatcher::applyLieUpdate(const Eigen::Isometry3d& T,
-                                                     const Eigen::Matrix<double, 6, 1>& dx) {
+Eigen::Isometry3d IkdTreeScanMatcher::applyLieUpdate(
+    const Eigen::Isometry3d& T, const Eigen::Matrix<double, 6, 1>& dx,
+    const Eigen::Vector3d& rot_center) {  // 👈 記得加參數
     Eigen::Vector3d dt = dx.head<3>();
     Eigen::Vector3d dphi = dx.tail<3>();
 
     double angle = dphi.norm();
-    Eigen::Matrix3d dR;
-    if (angle < 1e-9) {
-        dR = Eigen::Matrix3d::Identity();
-    } else {
+    Eigen::Matrix3d dR = Eigen::Matrix3d::Identity();  // 預設為單位矩陣
+    if (angle > 1e-9) {
         Eigen::AngleAxisd aa(angle, dphi / angle);
         dR = aa.toRotationMatrix();
     }
 
-    Eigen::Isometry3d dT = Eigen::Isometry3d::Identity();
-    dT.linear() = dR;
-    dT.translation() = dt;
+    Eigen::Isometry3d dT_new = Eigen::Isometry3d::Identity();
 
-    return dT * T;
+    // 🌟 核心修正：讓旋轉繞著 rot_center (LiDAR 中心) 轉，而不是世界原點！
+    dT_new.linear() = dR * T.linear();
+    dT_new.translation() = dR * (T.translation() - rot_center) + dt + rot_center;
+
+    return dT_new;
 }
 
 Eigen::Matrix<double, 6, 6> IkdTreeScanMatcher::computeCovariance(

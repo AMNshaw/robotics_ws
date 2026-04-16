@@ -78,11 +78,11 @@ SlamNode::SlamNode(const rclcpp::NodeOptions& options) : Node("lio_slam_shaw_nod
         std::vector<double> T_base_lidar_trans = declare_parameter<std::vector<double>>(
             "extrinsics.T_base_lidar_trans", {0.0, 0.0, 0.0});
         std::vector<double> T_base_lidar_rot = declare_parameter<std::vector<double>>(
-            "extrinsics.T_base_lidar_rot", {0.0, 0.0, 0.0, 1.0});
+            "extrinsics.T_base_lidar_rot", {1.0, 0.0, 0.0, 0.0});
         std::vector<double> T_base_imu_trans =
             declare_parameter<std::vector<double>>("extrinsics.T_base_imu_trans", {0.0, 0.0, 0.0});
         std::vector<double> T_base_imu_rot = declare_parameter<std::vector<double>>(
-            "extrinsics.T_base_imu_rot", {0.0, 0.0, 0.0, 1.0});
+            "extrinsics.T_base_imu_rot", {1.0, 0.0, 0.0, 0.0});
 
         if (T_base_lidar_trans.size() != 3 || T_base_lidar_rot.size() != 4) {
             RCLCPP_ERROR(get_logger(),
@@ -98,11 +98,11 @@ SlamNode::SlamNode(const rclcpp::NodeOptions& options) : Node("lio_slam_shaw_nod
         extrinsics.T_base_lidar.translate(
             Eigen::Vector3d(T_base_lidar_trans[0], T_base_lidar_trans[1], T_base_lidar_trans[2]));
         extrinsics.T_base_lidar.rotate(Eigen::Quaterniond(
-            T_base_lidar_rot[3], T_base_lidar_rot[0], T_base_lidar_rot[1], T_base_lidar_rot[2]));
+            T_base_lidar_rot[0], T_base_lidar_rot[1], T_base_lidar_rot[2], T_base_lidar_rot[3]));
         extrinsics.T_base_imu.translate(
             Eigen::Vector3d(T_base_imu_trans[0], T_base_imu_trans[1], T_base_imu_trans[2]));
-        extrinsics.T_base_imu.rotate(Eigen::Quaterniond(T_base_imu_rot[3], T_base_imu_rot[0],
-                                                        T_base_imu_rot[1], T_base_imu_rot[2]));
+        extrinsics.T_base_imu.rotate(Eigen::Quaterniond(T_base_imu_rot[0], T_base_imu_rot[1],
+                                                        T_base_imu_rot[2], T_base_imu_rot[3]));
 
         geometry_msgs::msg::TransformStamped tf_msg_lidar =
             tf2::eigenToTransform(extrinsics.T_base_lidar);
@@ -228,7 +228,7 @@ void SlamNode::publishVisualization(const core::VisualizationData& viz_data) {
     tf_broadcaster_->sendTransform(tf_msg);
 
     cloud_msg->header.stamp = coreToRos(viz_data.timestamp);
-    cloud_msg->header.frame_id = "odom";
+    cloud_msg->header.frame_id = tracking_frame_id_;
     pcl::toROSMsg(*(viz_data.scan), *cloud_msg);
     cloud_publisher_->publish(*cloud_msg);
 }

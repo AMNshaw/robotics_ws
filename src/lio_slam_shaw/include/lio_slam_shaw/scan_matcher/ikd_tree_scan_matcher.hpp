@@ -44,8 +44,9 @@ public:
                                 const core::NavState& initial_guess) override;
 
 private:
-    static Eigen::Isometry3d applyLieUpdate(const Eigen::Isometry3d& T,
-                                            const Eigen::Matrix<double, 6, 1>& dx);
+    Eigen::Isometry3d applyLieUpdate(const Eigen::Isometry3d& T,
+                                     const Eigen::Matrix<double, 6, 1>& dx,
+                                     const Eigen::Vector3d& rot_center);
 
     static Eigen::Matrix<double, 6, 6> computeCovariance(const Eigen::Matrix<double, 6, 6>& H,
                                                          int n_valid_points);
