@@ -13,9 +13,11 @@
 
 namespace lio_slam_shaw::factory {
 
-core::SlamProcessor::SharedPtr SlamFactory::create(rclcpp::Node* node) {
+core::SlamProcessor::SharedPtr SlamFactory::create(rclcpp::Node* node,
+                                                   const Extrinsics& extrinsics) {
     auto sensor_data_manager = std::make_shared<core::SensorDataManager>();
-    auto imu_preintegrator = ImuPreintegratorFactory::create(node);
+
+    auto imu_preintegrator = ImuPreintegratorFactory::create(node, extrinsics.T_base_imu);
 
     auto scan_preprocessor = ScanPreprocessorFactory::create(node);
 
@@ -23,13 +25,13 @@ core::SlamProcessor::SharedPtr SlamFactory::create(rclcpp::Node* node) {
 
     auto map_builder = MapBuilderFactory::create(node);
 
-    auto scan_matcher = ScanMatcherFactory::create(node, map_builder);
+    auto scan_matcher = ScanMatcherFactory::create(node, extrinsics.T_base_lidar, map_builder);
 
     auto frontend = std::make_shared<core::FrontEnd>(
         sensor_data_manager, scan_preprocessor, feature_extractor, scan_matcher, imu_preintegrator);
 
     auto map_optimizer = MapOptimizerFactory::create(node);
-    auto loop_closure_detector = LoopClosureDetectorFactory::create(node);
+    auto loop_closure_detector = LoopClosureDetectorFactory::create(node, extrinsics.T_base_lidar);
 
     auto backend =
         std::make_shared<core::BackEnd>(map_builder, map_optimizer, loop_closure_detector);

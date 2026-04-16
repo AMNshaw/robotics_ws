@@ -2,6 +2,7 @@
 #define LIO_SLAM_SHAW__SLAM_NODE_HPP_
 
 #include <pcl_conversions/pcl_conversions.h>
+#include <tf2_ros/static_transform_broadcaster.h>
 #include <tf2_ros/transform_broadcaster.h>
 
 #include <deque>
@@ -54,6 +55,11 @@ private:
     std::shared_ptr<rclcpp::Subscription<sensor_msgs::msg::PointCloud2>> livox_subscription_;
 
     std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
+    std::shared_ptr<tf2_ros::StaticTransformBroadcaster> tf_static_broadcaster_;
+
+    std::string tracking_frame_id_ = "";
+    std::string lidar_frame_id_ = "";
+    std::string imu_frame_id_ = "";
 
     std::shared_ptr<core::SlamProcessor> slam_processor_;
 };

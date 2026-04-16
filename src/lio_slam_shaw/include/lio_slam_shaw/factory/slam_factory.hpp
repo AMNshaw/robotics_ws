@@ -7,9 +7,14 @@
 
 namespace lio_slam_shaw::factory {
 
+struct Extrinsics {
+    Eigen::Isometry3d T_base_lidar = Eigen::Isometry3d::Identity();
+    Eigen::Isometry3d T_base_imu = Eigen::Isometry3d::Identity();
+};
+
 class SlamFactory {
 public:
-    static core::SlamProcessor::SharedPtr create(rclcpp::Node* node);
+    static core::SlamProcessor::SharedPtr create(rclcpp::Node* node, const Extrinsics& extrinsics);
 };
 
 }  // namespace lio_slam_shaw::factory

@@ -31,10 +31,7 @@ GtsamImuPreintegrator::GtsamImuPreintegrator(const GtsamImuPreintegratorParams& 
     correction_noise_large_ =
         gtsam::noiseModel::Diagonal::Sigmas((gtsam::Vector(6) << 1, 1, 1, 1, 1, 1).finished());
 
-    const auto& trans = params_.T_base_imu_trans;
-    const auto& rot = params_.T_base_imu_rot;
-    T_base_imu_ = gtsam::Pose3(gtsam::Rot3(rot[0], rot[1], rot[2], rot[3]),
-                               gtsam::Point3(trans[0], trans[1], trans[2]));
+    T_base_imu_ = toGtsamPose(params_.T_base_imu);
     T_imu_base_ = T_base_imu_.inverse();
 
     imu_integrator_opt_ =
@@ -43,6 +40,11 @@ GtsamImuPreintegrator::GtsamImuPreintegrator(const GtsamImuPreintegratorParams& 
         std::make_unique<gtsam::PreintegratedImuMeasurements>(gtsam_preint_params_, prior_imu_bias);
 
     state_ = PreintegratorState::WAITING_FOR_FIRST_FRAME;
+}
+
+void GtsamImuPreintegrator::setImuExtrinsics(const Eigen::Isometry3d& T_base_imu) {
+    T_base_imu_ = toGtsamPose(T_base_imu);
+    T_imu_base_ = T_base_imu_.inverse();
 }
 
 void GtsamImuPreintegrator::integrateImusAndPredict(const std::vector<core::ImuData>& imus) {

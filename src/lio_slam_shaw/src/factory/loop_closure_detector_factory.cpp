@@ -7,7 +7,8 @@
 
 namespace lio_slam_shaw::factory {
 
-core::ILoopClosureDetector::SharedPtr LoopClosureDetectorFactory::create(rclcpp::Node* node) {
+core::ILoopClosureDetector::SharedPtr LoopClosureDetectorFactory::create(
+    rclcpp::Node* node, const Eigen::Isometry3d& T_base_lidar) {
     const std::string type =
         node->declare_parameter<std::string>("loop_closure_detector_type", "icp");
 
@@ -56,10 +57,7 @@ core::ILoopClosureDetector::SharedPtr LoopClosureDetectorFactory::create(rclcpp:
         scan_matcher_params.degenerate_threshold =
             node->declare_parameter<double>("loop_closure.scan_matcher.degenerate_threshold",
                                             scan_matcher_params.degenerate_threshold);
-        scan_matcher_params.T_base_lidar_trans = node->declare_parameter<std::vector<double>>(
-            "loop_closure.scan_matcher.T_body_lidar_trans", scan_matcher_params.T_base_lidar_trans);
-        scan_matcher_params.T_base_lidar_rot = node->declare_parameter<std::vector<double>>(
-            "loop_closure.scan_matcher.T_body_lidar_rot", scan_matcher_params.T_base_lidar_rot);
+        scan_matcher_params.T_base_lidar = T_base_lidar;
 
         IkdTreeLoopClosureDetectorParams loop_closure_params;
         loop_closure_params.search_radius =

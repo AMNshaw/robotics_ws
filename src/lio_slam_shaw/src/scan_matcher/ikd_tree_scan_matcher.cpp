@@ -8,12 +8,11 @@ namespace lio_slam_shaw::scan_matcher {
 IkdTreeScanMatcher::IkdTreeScanMatcher(core::IMapBuilder::SharedPtr map_builder,
                                        const IkdTreeScanMatcherParams& params)
     : map_builder_(std::move(map_builder)), params_(params) {
-    const auto& t = params.T_base_lidar_trans;
-    const auto& q = params.T_base_lidar_rot;
-    T_base_lidar_ = Eigen::Isometry3d::Identity();
-    T_base_lidar_.linear() =
-        Eigen::Quaterniond(q[0], q[1], q[2], q[3]).normalized().toRotationMatrix();
-    T_base_lidar_.translation() = Eigen::Vector3d(t[0], t[1], t[2]);
+    T_base_lidar_ = params_.T_base_lidar;
+}
+
+void IkdTreeScanMatcher::setLidarExtrinsics(const Eigen::Isometry3d& T_base_lidar) {
+    T_base_lidar_ = T_base_lidar;
 }
 
 core::ScanMatchResult IkdTreeScanMatcher::match(const core::FeatureSet& features,

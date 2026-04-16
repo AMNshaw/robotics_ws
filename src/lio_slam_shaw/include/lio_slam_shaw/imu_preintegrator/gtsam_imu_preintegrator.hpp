@@ -27,8 +27,7 @@ struct GtsamImuPreintegratorParams {
 
     size_t marginalization_threshold = 100;
 
-    std::vector<double> T_base_imu_trans = {0.0, 0.0, 0.0};
-    std::vector<double> T_base_imu_rot = {1.0, 0.0, 0.0, 0.0};
+    Eigen::Isometry3d T_base_imu = Eigen::Isometry3d::Identity();
 };
 
 enum class PreintegratorState { WAITING_FOR_FIRST_FRAME, INITIALIZED, OPTIMIZING };
@@ -38,10 +37,7 @@ public:
     explicit GtsamImuPreintegrator(const GtsamImuPreintegratorParams& params);
     ~GtsamImuPreintegrator() override = default;
 
-    void setImuExtrinsics(const Eigen::Isometry3d& T_base_imu) override {
-        T_base_imu_ = toGtsamPose(T_base_imu);
-        T_imu_base_ = T_base_imu_.inverse();
-    }
+    void setImuExtrinsics(const Eigen::Isometry3d& T_base_imu) override;
     void integrateImusAndPredict(const std::vector<core::ImuData>& imus) override;
     void updateBiasAndRepropagateImus(
         const core::ScanMatchResult& scan_match_result,

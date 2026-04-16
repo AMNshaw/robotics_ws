@@ -19,22 +19,12 @@ SlamNode::SlamNode(const rclcpp::NodeOptions& options) : Node("lio_slam_shaw_nod
     const std::string lidar_topic = declare_parameter("lidar_topic", "/points_raw");
     if (lidar_topic.empty()) {
         RCLCPP_ERROR(get_logger(), "Lidar topic is not specified.");
-        throw std::runtime_error("Lidar topic is not specified");
+        throw std::invalid_argument("Lidar topic is not specified");
     }
     const std::string imu_topic = declare_parameter("imu_topic", "/imu_raw");
     if (imu_topic.empty()) {
         RCLCPP_ERROR(get_logger(), "Imu topic is not specified.");
-        throw std::runtime_error("Imu topic is not specified");
-    }
-
-    bool use_tf_extrinsic = declare_parameter("use_tf_extrinsic", false);
-    std::string tracking_frame_id = "";
-    std::string lidar_frame_id = "";
-    std::string imu_frame_id = "";
-    if (use_tf_extrinsic) {
-        tracking_frame_id = declare_parameter("tracking_frame_id", "base_link");
-        lidar_frame_id = declare_parameter("lidar_frame_id", "lidar_link");
-        imu_frame_id = declare_parameter("imu_frame_id", "imu_link");
+        throw std::invalid_argument("Imu topic is not specified");
     }
 
     if (lidar_type == "Velodyne") {
@@ -62,6 +52,76 @@ SlamNode::SlamNode(const rclcpp::NodeOptions& options) : Node("lio_slam_shaw_nod
     }
     RCLCPP_INFO(get_logger(), "Created Lidar Subscription: %s", lidar_type.c_str());
 
+    bool use_tf_extrinsic = declare_parameter("use_tf_extrinsic", false);
+    tracking_frame_id_ = declare_parameter("tracking_frame_id", "base_link");
+    lidar_frame_id_ = declare_parameter("lidar_frame_id", "lidar_link");
+    imu_frame_id_ = declare_parameter("imu_frame_id", "imu_link");
+
+    factory::Extrinsics extrinsics;
+
+    if (use_tf_extrinsic) {
+        auto tf_buffer = std::make_unique<tf2_ros::Buffer>(this->get_clock());
+        auto tf_listener = std::make_shared<tf2_ros::TransformListener>(*tf_buffer);
+        RCLCPP_INFO(get_logger(), "Waiting for extrinsic TF from %s to %s...",
+                    imu_frame_id_.c_str(), lidar_frame_id_.c_str());
+        geometry_msgs::msg::TransformStamped transform_stamped;
+        transform_stamped = tf_buffer->lookupTransform(
+            tracking_frame_id_, lidar_frame_id_, tf2::TimePointZero, tf2::durationFromSec(5.0));
+        extrinsics.T_base_lidar = tf2::transformToEigen(transform_stamped.transform);
+        transform_stamped = tf_buffer->lookupTransform(
+            tracking_frame_id_, imu_frame_id_, tf2::TimePointZero, tf2::durationFromSec(5.0));
+        extrinsics.T_base_imu = tf2::transformToEigen(transform_stamped.transform);
+
+        RCLCPP_INFO(get_logger(), "All extrinsic TFs received and set to SlamProcessor.");
+    } else {
+        tf_static_broadcaster_ = std::make_shared<tf2_ros::StaticTransformBroadcaster>(this);
+        std::vector<double> T_base_lidar_trans =
+            get_parameter("T_base_lidar_trans").as_double_array();
+        std::vector<double> T_base_lidar_rot = get_parameter("T_base_lidar_rot").as_double_array();
+        std::vector<double> T_base_imu_trans = get_parameter("T_base_imu_trans").as_double_array();
+        std::vector<double> T_base_imu_rot = get_parameter("T_base_imu_rot").as_double_array();
+
+        if (T_base_lidar_trans.size() != 3 || T_base_lidar_rot.size() != 4) {
+            RCLCPP_ERROR(get_logger(),
+                         "Invalid LIDAR extrinsic parameters. Please check the parameter sizes.");
+            throw std::invalid_argument("Invalid LIDAR extrinsic parameters");
+        }
+        if (T_base_imu_trans.size() != 3 || T_base_imu_rot.size() != 4) {
+            RCLCPP_ERROR(get_logger(),
+                         "Invalid IMU extrinsic parameters. Please check the parameter sizes.");
+            throw std::invalid_argument("Invalid IMU extrinsic parameters");
+        }
+
+        extrinsics.T_base_lidar.translate(
+            Eigen::Vector3d(T_base_lidar_trans[0], T_base_lidar_trans[1], T_base_lidar_trans[2]));
+        extrinsics.T_base_lidar.rotate(Eigen::Quaterniond(
+            T_base_lidar_rot[3], T_base_lidar_rot[0], T_base_lidar_rot[1], T_base_lidar_rot[2]));
+        extrinsics.T_base_imu.translate(
+            Eigen::Vector3d(T_base_imu_trans[0], T_base_imu_trans[1], T_base_imu_trans[2]));
+        extrinsics.T_base_imu.rotate(Eigen::Quaterniond(T_base_imu_rot[3], T_base_imu_rot[0],
+                                                        T_base_imu_rot[1], T_base_imu_rot[2]));
+
+        geometry_msgs::msg::TransformStamped tf_msg_lidar =
+            tf2::eigenToTransform(extrinsics.T_base_lidar);
+        geometry_msgs::msg::TransformStamped tf_msg_imu =
+            tf2::eigenToTransform(extrinsics.T_base_imu);
+        tf_msg_lidar.header.stamp = this->get_clock()->now();
+        tf_msg_lidar.header.frame_id = tracking_frame_id_;
+        tf_msg_lidar.child_frame_id = lidar_frame_id_;
+        tf_msg_imu.header.stamp = this->get_clock()->now();
+        tf_msg_imu.header.frame_id = tracking_frame_id_;
+        tf_msg_imu.child_frame_id = imu_frame_id_;
+        tf_static_broadcaster_->sendTransform(tf_msg_lidar);
+        tf_static_broadcaster_->sendTransform(tf_msg_imu);
+        RCLCPP_INFO(get_logger(), "Static TFs for extrinsics broadcasted.");
+    }
+
+    slam_processor_ = factory::SlamFactory::create(this, extrinsics);
+    slam_processor_->registerOdometryCallback(
+        [this](const core::NavState& odom_state) { publishOdometry(odom_state); });
+    slam_processor_->registerVisualizationCallback(
+        [this](const core::VisualizationData& viz_data) { publishVisualization(viz_data); });
+
     odom_publisher_ = create_publisher<nav_msgs::msg::Odometry>("odom", 10);
     cloud_publisher_ = create_publisher<sensor_msgs::msg::PointCloud2>("scan", 10);
 
@@ -69,30 +129,6 @@ SlamNode::SlamNode(const rclcpp::NodeOptions& options) : Node("lio_slam_shaw_nod
         imu_topic, 100, std::bind(&SlamNode::imuCallback, this, std::placeholders::_1));
 
     tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
-
-    slam_processor_ = factory::SlamFactory::create(this);
-
-    slam_processor_->registerOdometryCallback(
-        [this](const core::NavState& odom_state) { publishOdometry(odom_state); });
-    slam_processor_->registerVisualizationCallback(
-        [this](const core::VisualizationData& viz_data) { publishVisualization(viz_data); });
-
-    if (use_tf_extrinsic) {
-        auto tf_buffer = std::make_unique<tf2_ros::Buffer>(this->get_clock());
-        auto tf_listener = std::make_shared<tf2_ros::TransformListener>(*tf_buffer);
-        RCLCPP_INFO(get_logger(), "Waiting for extrinsic TF from %s to %s...", imu_frame_id.c_str(),
-                    lidar_frame_id.c_str());
-        geometry_msgs::msg::TransformStamped transform_stamped;
-        transform_stamped = tf_buffer->lookupTransform(
-            tracking_frame_id, lidar_frame_id, tf2::TimePointZero, tf2::durationFromSec(5.0));
-        const auto T_base_lidar = tf2::transformToEigen(transform_stamped.transform);
-        transform_stamped = tf_buffer->lookupTransform(
-            tracking_frame_id, imu_frame_id, tf2::TimePointZero, tf2::durationFromSec(5.0));
-        const auto T_base_imu = tf2::transformToEigen(transform_stamped.transform);
-
-        slam_processor_->setExtrinsics(T_base_lidar, T_base_imu);
-        RCLCPP_INFO(get_logger(), "All extrinsic TFs received and set to SlamProcessor.");
-    }
 
     slam_processor_->start();
 
@@ -161,7 +197,7 @@ void SlamNode::publishOdometry(const core::NavState& odom_state) {
     geometry_msgs::msg::TransformStamped tf_msg;
     tf_msg.header.stamp = odom_msg.header.stamp;
     tf_msg.header.frame_id = "odom";
-    tf_msg.child_frame_id = "base_link";
+    tf_msg.child_frame_id = tracking_frame_id_;
     tf_msg.transform.translation.x = odom_state.pose.translation().x();
     tf_msg.transform.translation.y = odom_state.pose.translation().y();
     tf_msg.transform.translation.z = odom_state.pose.translation().z();

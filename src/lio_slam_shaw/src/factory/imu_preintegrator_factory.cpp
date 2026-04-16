@@ -4,21 +4,12 @@
 
 namespace lio_slam_shaw::factory {
 
-core::IImuPreintegrator::SharedPtr ImuPreintegratorFactory::create(rclcpp::Node* node) {
+core::IImuPreintegrator::SharedPtr ImuPreintegratorFactory::create(
+    rclcpp::Node* node, const Eigen::Isometry3d& T_base_imu) {
     std::string type = node->declare_parameter<std::string>("imu_preintegrator_type", "gtsam");
 
     GtsamImuPreintegratorParams params;
-    if (!node->has_parameter("use_tf_extrinsic")) {
-        node->declare_parameter<bool>("use_tf_extrinsic", false);
-    }
-    bool use_tf_extrinsic = node->get_parameter("use_tf_extrinsic").as_bool();
-    if (!use_tf_extrinsic) {
-        params.T_base_imu_trans =
-            node->declare_parameter<std::vector<double>>("T_base_imu_trans", {0.0, 0.0, 0.0});
-        params.T_base_imu_rot =
-            node->declare_parameter<std::vector<double>>("T_base_imu_rot", {1.0, 0.0, 0.0, 0.0});
-    }
-
+    params.T_base_imu = T_base_imu;
     params.gravity = node->declare_parameter<double>("imu.gravity", params.gravity);
     params.imu_acc_noise = node->declare_parameter<double>("imu.acc_noise", params.imu_acc_noise);
     params.imu_gyr_noise = node->declare_parameter<double>("imu.gyr_noise", params.imu_gyr_noise);
