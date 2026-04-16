@@ -37,13 +37,30 @@
         convergence_threshold: 1e-5
         min_valid_points: 50
         degenerate_threshold: 100.0
+        max_search_dist: 2.0
+        min_plane_points: 5
+        plane_valid_threshold: 0.1
 
       map_builder:
+        type: "ikd_tree"
         keyframe_distance_threshold: 1.0
         keyframe_rotation_threshold: 0.2
         ikd_delete_param: 0.5
         ikd_balance_param: 0.6
         ikd_downsample_size: 0.3
-        max_search_dist: 2.0
-        min_plane_points: 5
-        plane_valid_threshold: 0.1
+        
+      loop_closure:
+        type: "ikd_tree"
+        search_radius: 5.0
+        min_time_gap_sec: 30.0
+        scan_matcher:
+          k_neighbors: 5
+          max_iterations: 100
+          convergence_threshold: 1e-5
+          min_valid_points: 50
+          degenerate_threshold: 100.0
+          min_plane_points: 5
+          max_search_dist: 2.0
+          plane_valid_threshold: 0.1
+
+        

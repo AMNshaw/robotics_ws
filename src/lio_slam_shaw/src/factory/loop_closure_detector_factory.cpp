@@ -46,17 +46,23 @@ core::ILoopClosureDetector::SharedPtr LoopClosureDetectorFactory::create(
 
     if (type == "ikd_tree") {
         scan_matcher::IkdTreeScanMatcherParams scan_matcher_params;
-        scan_matcher_params.k_neighbors = node->declare_parameter<int>(
-            "loop_closure.scan_matcher.k_neighbors", scan_matcher_params.k_neighbors);
+        scan_matcher_params.k_neighbors =
+            node->declare_parameter<int>("loop_closure.scan_matcher.k_neighbors", 5);
         scan_matcher_params.max_iterations =
             node->declare_parameter<int>("loop_closure.scan_matcher.max_iterations", 100);
         scan_matcher_params.convergence_threshold = node->declare_parameter<double>(
             "loop_closure.scan_matcher.convergence_threshold", 1e-6);
         scan_matcher_params.min_valid_points =
             node->declare_parameter<int>("loop_closure.scan_matcher.min_valid_points", 50);
-        scan_matcher_params.degenerate_threshold =
-            node->declare_parameter<double>("loop_closure.scan_matcher.degenerate_threshold",
-                                            scan_matcher_params.degenerate_threshold);
+        scan_matcher_params.degenerate_threshold = node->declare_parameter<double>(
+            "loop_closure.scan_matcher.degenerate_threshold", 100.0);
+        scan_matcher_params.max_search_dist =
+            node->declare_parameter<double>("loop_closure.scan_matcher.max_search_dist", 2.0);
+        scan_matcher_params.min_plane_points =
+            node->declare_parameter<int>("loop_closure.scan_matcher.min_plane_points", 5);
+        scan_matcher_params.plane_valid_threshold =
+            node->declare_parameter<double>("loop_closure.scan_matcher.plane_valid_threshold", 0.1);
+
         scan_matcher_params.T_base_lidar = T_base_lidar;
 
         IkdTreeLoopClosureDetectorParams loop_closure_params;
