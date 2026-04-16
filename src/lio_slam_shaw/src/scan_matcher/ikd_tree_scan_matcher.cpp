@@ -1,5 +1,7 @@
 #include "lio_slam_shaw/scan_matcher/ikd_tree_scan_matcher.hpp"
 
+#include <omp.h>
+
 #include <Eigen/Dense>
 #include <cmath>
 
@@ -30,20 +32,55 @@ core::ScanMatchResult IkdTreeScanMatcher::match(const core::FeatureSet& features
 
     for (int iter = 0; iter < params_.max_iterations; ++iter) {
         const Eigen::Isometry3d T_map_lidar = result.pose * T_base_lidar_;
-        auto nn_results = map_builder_->queryNearestPoints(cloud, T_map_lidar, params_.k_neighbors);
+        const Eigen::Matrix3d R_map_lidar = T_map_lidar.linear();
+        const Eigen::Vector3d t_map_lidar = T_map_lidar.translation();
+
+        std::vector<NearestPlaneResult> nearest_planes;
+        nearest_planes.resize(cloud->size());
+#pragma omp parallel for schedule(static)
+        for (int i = 0; i < static_cast<int>(cloud->size()); ++i) {
+            const auto& pt = (*cloud)[i];
+            core::PointXYZIRT query_map_pt = pt;
+            query_map_pt.x =
+                static_cast<float>(R_map_lidar(0, 0) * pt.x + R_map_lidar(0, 1) * pt.y +
+                                   R_map_lidar(0, 2) * pt.z + t_map_lidar.x());
+            query_map_pt.y =
+                static_cast<float>(R_map_lidar(1, 0) * pt.x + R_map_lidar(1, 1) * pt.y +
+                                   R_map_lidar(1, 2) * pt.z + t_map_lidar.y());
+            query_map_pt.z =
+                static_cast<float>(R_map_lidar(2, 0) * pt.x + R_map_lidar(2, 1) * pt.y +
+                                   R_map_lidar(2, 2) * pt.z + t_map_lidar.z());
+            std::vector<core::PointXYZIRT> neighbors;
+            std::vector<float> distances;
+            if (!map_builder_->searchKNearestPoints(query_map_pt, params_.k_neighbors,
+                                                    params_.max_search_dist, neighbors, distances))
+                continue;
+
+            if (static_cast<int>(neighbors.size()) > params_.min_plane_points) {
+                nearest_planes[i] = fitPlane(
+                    neighbors, Eigen::Vector3d(query_map_pt.x, query_map_pt.y, query_map_pt.z));
+            } else {
+                nearest_planes[i].valid = false;
+            }
+        }
 
         Eigen::Matrix<double, 6, 6> H = Eigen::Matrix<double, 6, 6>::Zero();
         Eigen::Matrix<double, 6, 1> b = Eigen::Matrix<double, 6, 1>::Zero();
         int n_valid = 0;
 
-        for (const auto& nn : nn_results) {
-            if (!nn.valid) continue;
+        for (const auto& n : nearest_planes) {
+            if (!n.valid) continue;
 
-            double r = nn.normal.dot(nn.point_in_map - nn.centroid);
+            Eigen::Vector3d normal = n.normal;
+            if (normal.dot(n.point_in_map) > 0) {
+                normal = -normal;
+            }
+
+            double r = normal.dot(n.point_in_map - n.centroid);
 
             Eigen::Matrix<double, 6, 1> J;
-            J.head<3>() = nn.normal;
-            J.tail<3>() = nn.point_in_map.cross(nn.normal);
+            J.head<3>() = normal;
+            J.tail<3>() = n.point_in_map.cross(normal);
 
             H += J * J.transpose();
             b += J * r;
@@ -75,6 +112,36 @@ core::ScanMatchResult IkdTreeScanMatcher::match(const core::FeatureSet& features
     }
 
     return result;
+}
+
+NearestPlaneResult IkdTreeScanMatcher::fitPlane(
+    const std::vector<lio_slam_shaw::core::PointXYZIRT>& neighbors,
+    const Eigen::Vector3d& query_point_in_map) const {
+    Eigen::Vector3d centroid = Eigen::Vector3d::Zero();
+    for (const auto& p : neighbors) centroid += Eigen::Vector3d(p.x, p.y, p.z);
+    centroid /= static_cast<double>(neighbors.size());
+
+    Eigen::Matrix3d cov = Eigen::Matrix3d::Zero();
+    for (const auto& p : neighbors) {
+        Eigen::Vector3d dp = Eigen::Vector3d(p.x, p.y, p.z) - centroid;
+        cov += dp * dp.transpose();
+    }
+
+    Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> solver(cov);
+    const auto& eigenvalues = solver.eigenvalues();
+
+    if (eigenvalues(0) > params_.plane_valid_threshold * eigenvalues(2)) {
+        return {false, {}, {}, {}};
+    }
+
+    Eigen::Vector3d normal = solver.eigenvectors().col(0);
+
+    return NearestPlaneResult{
+        /*valid=*/true,
+        /*point_in_map=*/query_point_in_map,
+        /*normal=*/normal,
+        /*centroid=*/centroid,
+    };
 }
 
 Eigen::Isometry3d IkdTreeScanMatcher::applyLieUpdate(const Eigen::Isometry3d& T,

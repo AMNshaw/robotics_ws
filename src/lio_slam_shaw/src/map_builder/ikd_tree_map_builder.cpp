@@ -45,7 +45,7 @@ std::optional<core::Keyframe::SharedPtr> IkdTreeMapBuilder::addFrame(
 
         if (T_corr.has_value()) {
             const Eigen::Isometry3d& mat = T_corr.value();
-#pragma omp parallel for num_threads(4) schedule(dynamic)
+#pragma omp parallel for num_threads(4) schedule(static)
             for (size_t i = 0; i < points_corrected.size(); ++i) {
                 auto& p = points_corrected[i];
                 Eigen::Vector3d pt_new = mat * Eigen::Vector3d(p.x, p.y, p.z);
@@ -109,38 +109,20 @@ void IkdTreeMapBuilder::clearMap() {
     next_keyframe_id_ = 0;
 }
 
-std::vector<core::NearestPointResult> IkdTreeMapBuilder::queryNearestPoints(
-    const core::PointCloudIRTConstPtr& query_cloud, const Eigen::Isometry3d& T_map_lidar,
-    int k) const {
-    std::vector<core::NearestPointResult> results;
-    if (!query_cloud || query_cloud->empty()) return results;
-    results.reserve(query_cloud->size());
+bool IkdTreeMapBuilder::searchKNearestPoints(const core::PointXYZIRT& query_pt, int k,
+                                             float search_dist,
+                                             std::vector<core::PointXYZIRT>& out_neighbors,
+                                             std::vector<float>& out_distances) const {
+    if (!ikd_tree_) return false;
 
-    auto local_tree = ikd_tree_;
+    KD_TREE<core::PointXYZIRT>::PointVector internal_neighbors;
 
-    if (!local_tree) return results;
+    const_cast<KD_TREE<core::PointXYZIRT>*>(ikd_tree_.get())
+        ->Nearest_Search(query_pt, k, internal_neighbors, out_distances, search_dist);
 
-    for (const auto& p : *query_cloud) {
-        Eigen::Vector3d p_map = T_map_lidar * Eigen::Vector3d(p.x, p.y, p.z);
-        core::PointXYZIRT query_pt;
-        query_pt.x = static_cast<float>(p_map.x());
-        query_pt.y = static_cast<float>(p_map.y());
-        query_pt.z = static_cast<float>(p_map.z());
+    out_neighbors.assign(internal_neighbors.begin(), internal_neighbors.end());
 
-        KD_TREE<core::PointXYZIRT>::PointVector neighbors;
-        std::vector<float> distances;
-        const_cast<KD_TREE<core::PointXYZIRT>*>(local_tree.get())
-            ->Nearest_Search(query_pt, k, neighbors, distances, params_.max_search_dist);
-
-        if (static_cast<int>(neighbors.size()) < params_.min_plane_points) {
-            results.push_back({false, {}, {}, {}});
-            continue;
-        }
-
-        results.push_back(fitPlane(neighbors, p_map));
-    }
-
-    return results;
+    return true;
 }
 
 void IkdTreeMapBuilder::updateKeyframePoses(
@@ -234,11 +216,10 @@ void IkdTreeMapBuilder::updateMap() {
             temp_ikd_tree_->Add_Points(ikd_increment_, true);
             ikd_increment_.clear();
         }
+        std::swap(ikd_tree_, temp_ikd_tree_);
     }
 
-    std::swap(ikd_tree_, temp_ikd_tree_);
-
-    is_updating_map_.store(false);
+    is_updating_map_.store(false, std::memory_order_release);
     last_pending_correction_.reset();
     temp_ikd_tree_.reset();
 }
@@ -288,36 +269,6 @@ bool IkdTreeMapBuilder::isNewKeyframe(const Eigen::Isometry3d& pose) const {
     double cos_angle = std::clamp((dR.trace() - 1.0) / 2.0, -1.0, 1.0);
     double angle = std::acos(cos_angle);
     return angle >= params_.keyframe_angle_threshold;
-}
-
-core::NearestPointResult IkdTreeMapBuilder::fitPlane(
-    const KD_TREE<core::PointXYZIRT>::PointVector& neighbors,
-    const Eigen::Vector3d& query_point_in_map) const {
-    Eigen::Vector3d centroid = Eigen::Vector3d::Zero();
-    for (const auto& p : neighbors) centroid += Eigen::Vector3d(p.x, p.y, p.z);
-    centroid /= static_cast<double>(neighbors.size());
-
-    Eigen::Matrix3d cov = Eigen::Matrix3d::Zero();
-    for (const auto& p : neighbors) {
-        Eigen::Vector3d dp = Eigen::Vector3d(p.x, p.y, p.z) - centroid;
-        cov += dp * dp.transpose();
-    }
-
-    Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> solver(cov);
-    const auto& eigenvalues = solver.eigenvalues();
-
-    if (eigenvalues(0) > params_.plane_valid_threshold * eigenvalues(2)) {
-        return {false, {}, {}, {}};
-    }
-
-    Eigen::Vector3d normal = solver.eigenvectors().col(0);
-
-    return core::NearestPointResult{
-        /*valid=*/true,
-        /*point_in_map=*/query_point_in_map,
-        /*normal=*/normal,
-        /*centroid=*/centroid,
-    };
 }
 
 }  // namespace lio_slam_shaw::map_builder

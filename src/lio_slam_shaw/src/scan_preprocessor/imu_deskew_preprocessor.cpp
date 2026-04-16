@@ -63,8 +63,7 @@ core::LidarData ImuDeskewPreprocessor::processCloud(const std::vector<core::NavS
     auto deskewed = std::make_shared<core::PointCloudIRT>();
     deskewed->resize(n);
 
-#pragma omp parallel for schedule(dynamic, 64) default(none) \
-    shared(snapshot, raw_cloud, deskewed, T_0_inv, n)
+#pragma omp parallel for schedule(static)
     for (int i = 0; i < n; ++i) {
         const auto& pt = raw_cloud.cloud->points[i];
         const auto pt_time =

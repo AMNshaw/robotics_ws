@@ -18,11 +18,6 @@ struct IkdTreeMapBuilderParams {
     float ikd_delete_param = 0.5f;
     float ikd_balance_param = 0.6f;
     float ikd_downsample_size = 0.3f;
-
-    double max_search_dist = 5.0;
-
-    int min_plane_points = 5;
-    double plane_valid_threshold = 0.1;
 };
 
 class IkdTreeMapBuilder : public core::IMapBuilder {
@@ -36,9 +31,9 @@ public:
 
     void clearMap() override;
 
-    std::vector<core::NearestPointResult> queryNearestPoints(
-        const core::PointCloudIRTConstPtr& query_cloud, const Eigen::Isometry3d& T_map_lidar,
-        int k = 5) const override;
+    bool searchKNearestPoints(const core::PointXYZIRT& query_pt, int k, float search_dist,
+                              std::vector<core::PointXYZIRT>& out_neighbors,
+                              std::vector<float>& out_distances) const override;
 
     void updateKeyframePoses(
         const std::vector<std::pair<uint64_t, Eigen::Isometry3d>>& id_pose_pairs) override;
@@ -52,9 +47,6 @@ public:
 
 private:
     bool isNewKeyframe(const Eigen::Isometry3d& pose) const;
-
-    core::NearestPointResult fitPlane(const KD_TREE<core::PointXYZIRT>::PointVector& neighbors,
-                                      const Eigen::Vector3d& query_point_in_map) const;
 
     IkdTreeMapBuilderParams params_;
     std::shared_ptr<KD_TREE<core::PointXYZIRT>> ikd_tree_;

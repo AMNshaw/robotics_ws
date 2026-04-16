@@ -19,6 +19,12 @@ core::IScanMatcher::SharedPtr ScanMatcherFactory::create(rclcpp::Node* node,
         params.min_valid_points = node->declare_parameter<int>("scan_matcher.min_valid_points", 50);
         params.degenerate_threshold =
             node->declare_parameter<double>("scan_matcher.degenerate_threshold", 100.0);
+        params.max_search_dist =
+            node->declare_parameter<double>("scan_matcher.max_search_dist", 2.0);
+        params.min_plane_points = node->declare_parameter<int>("scan_matcher.min_plane_points", 5);
+        params.plane_valid_threshold =
+            node->declare_parameter<double>("scan_matcher.plane_valid_threshold", 0.1);
+
         return std::make_shared<scan_matcher::IkdTreeScanMatcher>(map_builder, params);
     }
 

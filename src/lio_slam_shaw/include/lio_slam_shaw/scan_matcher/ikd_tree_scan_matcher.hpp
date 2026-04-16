@@ -18,7 +18,18 @@ struct IkdTreeScanMatcherParams {
     int min_valid_points = 50;
     double degenerate_threshold = 100.0;
 
+    float max_search_dist = 1.0;
+    int min_plane_points = 5;
+    double plane_valid_threshold = 0.1;
+
     Eigen::Isometry3d T_base_lidar = Eigen::Isometry3d::Identity();
+};
+
+struct NearestPlaneResult {
+    bool valid = false;
+    Eigen::Vector3d point_in_map;
+    Eigen::Vector3d normal;
+    Eigen::Vector3d centroid;
 };
 
 class IkdTreeScanMatcher : public core::IScanMatcher {
@@ -40,6 +51,9 @@ private:
                                                          int n_valid_points);
 
     static bool checkDegenerate(const Eigen::Matrix<double, 6, 6>& H, double degenerate_threshold);
+
+    NearestPlaneResult fitPlane(const std::vector<lio_slam_shaw::core::PointXYZIRT>& neighbors,
+                                const Eigen::Vector3d& query_point_in_map) const;
 
     core::IMapBuilder::SharedPtr map_builder_;
     IkdTreeScanMatcherParams params_;

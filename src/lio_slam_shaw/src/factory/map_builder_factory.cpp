@@ -19,11 +19,6 @@ core::IMapBuilder::SharedPtr MapBuilderFactory::create(rclcpp::Node* node) {
             node->declare_parameter<double>("map_builder.ikd_balance_param", 0.6));
         params.ikd_downsample_size = static_cast<float>(
             node->declare_parameter<double>("map_builder.ikd_downsample_size", 0.3));
-        params.max_search_dist =
-            node->declare_parameter<double>("map_builder.max_search_dist", 2.0);
-        params.min_plane_points = node->declare_parameter<int>("map_builder.min_plane_points", 5);
-        params.plane_valid_threshold =
-            node->declare_parameter<double>("map_builder.plane_valid_threshold", 0.1);
 
         return std::make_shared<map_builder::IkdTreeMapBuilder>(params);
     }

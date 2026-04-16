@@ -31,13 +31,6 @@ struct Keyframe {
           matched_result(matched_result) {}
 };
 
-struct NearestPointResult {
-    bool valid = false;
-    Eigen::Vector3d point_in_map;
-    Eigen::Vector3d normal;
-    Eigen::Vector3d centroid;
-};
-
 class IMapBuilder {
 public:
     using SharedPtr = std::shared_ptr<IMapBuilder>;
@@ -50,9 +43,9 @@ public:
 
     virtual void clearMap() = 0;
 
-    virtual std::vector<NearestPointResult> queryNearestPoints(
-        const PointCloudIRTConstPtr& query_cloud, const Eigen::Isometry3d& T_map_lidar,
-        int k = 5) const = 0;
+    virtual bool searchKNearestPoints(const core::PointXYZIRT& query_pt, int k, float search_dist,
+                                      std::vector<core::PointXYZIRT>& out_neighbors,
+                                      std::vector<float>& out_distances) const = 0;
 
     virtual void updateKeyframePoses(
         const std::vector<std::pair<uint64_t, Eigen::Isometry3d>>& id_pose_pairs) = 0;
