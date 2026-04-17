@@ -9,6 +9,12 @@ void SensorDataManager::addImuData(const ImuData& imu) {
     }
     last_imu_time_ = imu.timestamp;
     imu_queue_.push_back(imu);
+
+    // Cap queue size to prevent unbounded growth (~10s at 500Hz).
+    // getSyncedData handles proper cleanup; this is a safety net.
+    while (imu_queue_.size() > 5000) {
+        imu_queue_.pop_front();
+    }
 }
 
 void SensorDataManager::addLidarData(const LidarData& lidar) {
@@ -27,10 +33,11 @@ bool SensorDataManager::getBatchImuData(const Timestamp& start_time, const Times
 
     out_imu_batch.clear();
 
-    while (imu_queue_.size() > 2 && imu_queue_[1].timestamp < start_time) {
-        imu_queue_.pop_front();
-    }
-
+    // Read-only: do NOT pop from the queue here.
+    // getSyncedData is the sole consumer that manages queue cleanup.
+    // Popping here was causing the sync path to find an empty IMU segment
+    // because feed_imu (at 500Hz) would evict data before getSyncedData
+    // could use it.
     for (const auto& imu : imu_queue_) {
         if (imu.timestamp >= start_time && imu.timestamp <= end_time) {
             out_imu_batch.push_back(imu);

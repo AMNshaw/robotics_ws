@@ -52,8 +52,7 @@ private:
     void initFirstFrame(const gtsam::Pose3& current_pose);
     void resetOptimization();
     void marginalizeOldFactors();
-    bool calculateImuBias(const gtsam::Pose3& current_pose,
-                          gtsam::noiseModel::Diagonal::shared_ptr pose_cov,
+    bool calculateImuBias(const gtsam::Pose3& current_pose, gtsam::SharedNoiseModel pose_noise,
                           const std::vector<core::ImuData>& opt_imu_segment);
     bool failureDetection(const gtsam::Vector3& velCur,
                           const gtsam::imuBias::ConstantBias& biasCur);

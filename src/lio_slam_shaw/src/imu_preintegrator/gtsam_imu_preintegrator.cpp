@@ -134,10 +134,26 @@ void GtsamImuPreintegrator::updateBiasAndRepropagateImus(
         return;
     }
 
-    if (!calculateImuBias(
-            imu_pose,
-            (scan_match_result.is_degenerate ? correction_noise_large_ : correction_noise_),
-            opt_imu_segment)) {
+    // Build pose noise from scan matcher covariance (already computed as H^{-1})
+    // Scan matcher cov is [translation(3), rotation(3)] order;
+    // GTSAM Pose3 expects [rotation(3), translation(3)] order.
+    gtsam::SharedNoiseModel pose_noise;
+    if (scan_match_result.is_degenerate) {
+        pose_noise = correction_noise_large_;
+    } else {
+        const auto& cov_sm = scan_match_result.covariance;
+        gtsam::Vector6 sigmas;
+        for (int i = 0; i < 3; ++i) {
+            sigmas(i) =
+                std::max(std::sqrt(std::abs(cov_sm(3 + i, 3 + i))), 0.1);  // rotation, min 0.1 rad
+            sigmas(3 + i) =
+                std::max(std::sqrt(std::abs(cov_sm(i, i))), 0.3);  // translation, min 0.3 m
+        }
+        pose_noise = gtsam::noiseModel::Diagonal::Sigmas(sigmas);
+        std::cerr << "[ImuPreintegrator] pose sigmas: " << sigmas.transpose() << std::endl;
+    }
+
+    if (!calculateImuBias(imu_pose, pose_noise, opt_imu_segment)) {
         state_ = PreintegratorState::WAITING_FOR_FIRST_FRAME;
         return;
     }
@@ -199,10 +215,15 @@ std::optional<core::NavState> GtsamImuPreintegrator::queryNavState(const core::T
 }
 
 void GtsamImuPreintegrator::initFirstFrame(const gtsam::Pose3& imu_pose) {
+    // Sigma values chosen to keep Hessian condition number manageable (~1e5–1e7).
+    // V prior sigma=1.0 (info=1): loose enough for low-speed motion but avoids
+    //   the 1e-4 info from sigma=1e2 that created a 1e13 condition ratio with B.
+    // B prior sigma=0.1 (info=100): biases start near zero; 0.1 is realistic
+    //   initial uncertainty and avoids the 1e6 info from sigma=1e-3.
     gtsam::noiseModel::Diagonal::shared_ptr prior_vel_noise =
-        gtsam::noiseModel::Isotropic::Sigma(3, 1e4);
+        gtsam::noiseModel::Isotropic::Sigma(3, 1.0);
     gtsam::noiseModel::Diagonal::shared_ptr prior_bias_noise =
-        gtsam::noiseModel::Isotropic::Sigma(6, 1e-3);
+        gtsam::noiseModel::Isotropic::Sigma(6, 1e-1);
 
     gtsam::NonlinearFactorGraph graph;
     gtsam::Values values;
@@ -251,7 +272,7 @@ void GtsamImuPreintegrator::marginalizeOldFactors() {
 }
 
 bool GtsamImuPreintegrator::calculateImuBias(const gtsam::Pose3& imu_pose,
-                                             gtsam::noiseModel::Diagonal::shared_ptr pose_cov,
+                                             gtsam::SharedNoiseModel pose_cov,
                                              const std::vector<core::ImuData>& opt_imu_segment) {
     for (size_t i = 1; i < opt_imu_segment.size(); ++i) {
         const auto& curr_imu = opt_imu_segment[i];
@@ -269,6 +290,9 @@ bool GtsamImuPreintegrator::calculateImuBias(const gtsam::Pose3& imu_pose,
     }
 
     const double dt_between = std::max(imu_integrator_opt_->deltaTij(), 1e-5);
+
+    std::cerr << "[ImuPreintegrator] calculateImuBias: imu_seg=" << opt_imu_segment.size()
+              << " deltaTij=" << dt_between << " node=" << graph_node_index_ << std::endl;
 
     gtsam::NonlinearFactorGraph graph;
     gtsam::Values values;
@@ -330,6 +354,8 @@ void GtsamImuPreintegrator::resetOptimization() {
     gtsam::ISAM2Params optParameters;
     optParameters.relinearizeThreshold = 0.1;
     optParameters.relinearizeSkip = 1;
+    optParameters.factorization =
+        gtsam::ISAM2Params::QR;  // QR is more numerically stable than Cholesky
     optimizer_ = std::make_unique<gtsam::ISAM2>(optParameters);
 }
 
