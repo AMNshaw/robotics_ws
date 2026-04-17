@@ -24,6 +24,8 @@ core::IScanMatcher::SharedPtr ScanMatcherFactory::create(rclcpp::Node* node,
         params.min_plane_points = node->declare_parameter<int>("scan_matcher.min_plane_points", 5);
         params.plane_valid_threshold =
             node->declare_parameter<double>("scan_matcher.plane_valid_threshold", 0.1);
+        params.rot_regularization_sigma =
+            node->declare_parameter<double>("scan_matcher.rot_regularization_sigma", 0.0);
 
         return std::make_shared<scan_matcher::IkdTreeScanMatcher>(map_builder, params);
     }

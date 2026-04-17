@@ -10,11 +10,11 @@ void SensorDataManager::addImuData(const ImuData& imu) {
     last_imu_time_ = imu.timestamp;
     imu_queue_.push_back(imu);
 
-    // Cap queue size to prevent unbounded growth (~10s at 500Hz).
-    // getSyncedData handles proper cleanup; this is a safety net.
-    while (imu_queue_.size() > 5000) {
-        imu_queue_.pop_front();
-    }
+    // No hard cap here. getSyncedData pops everything before each lidar
+    // frame's start, so the queue is naturally bounded to:
+    //   (processing_lag_sec) × IMU_rate
+    // A hard cap would evict old data that queued-up lidar frames still need,
+    // causing empty opt_imu_segment → ISAM2 crash when processing falls behind.
 }
 
 void SensorDataManager::addLidarData(const LidarData& lidar) {

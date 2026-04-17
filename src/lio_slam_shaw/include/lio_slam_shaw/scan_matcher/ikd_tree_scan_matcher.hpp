@@ -22,6 +22,10 @@ struct IkdTreeScanMatcherParams {
     int min_plane_points = 3;
     double plane_valid_threshold = 0.1;
 
+    /// Rotation regularization: penalise deviation from IMU-predicted rotation.
+    /// sigma in radians. 0 = disabled.
+    double rot_regularization_sigma = 0.0;
+
     Eigen::Isometry3d T_base_lidar = Eigen::Isometry3d::Identity();
 };
 

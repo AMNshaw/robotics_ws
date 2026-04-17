@@ -104,10 +104,35 @@ core::ScanMatchResult IkdTreeScanMatcher::match(const core::FeatureSet& features
             break;
         }
 
+        // ── Rotation regularisation ─────────────────────────────────
+        // Penalise rotation deviation from the IMU-predicted orientation
+        // (initial_guess). This compensates for the inherently weak
+        // rotation constraint of point-to-plane ICP, preventing attitude
+        // drift that would otherwise destabilise ISAM2 bias estimation.
+        if (params_.rot_regularization_sigma > 0.0) {
+            const Eigen::Matrix3d R_imu = initial_guess.pose.linear();
+            const Eigen::Matrix3d R_curr = result.pose.linear();
+            const Eigen::Matrix3d dR_err = R_imu.transpose() * R_curr;
+
+            Eigen::AngleAxisd aa_err(dR_err);
+            double angle = aa_err.angle();
+            // Normalise to [-pi, pi]
+            if (angle > M_PI) angle -= 2.0 * M_PI;
+            if (angle < -M_PI) angle += 2.0 * M_PI;
+            Eigen::Vector3d rot_err = angle * aa_err.axis();
+
+            const double w_rot =
+                1.0 / (params_.rot_regularization_sigma * params_.rot_regularization_sigma);
+
+            // J_rot = [0_{3x3}, I_{3x3}] → only affects bottom-right 3×3
+            H.bottomRightCorner<3, 3>() += w_rot * Eigen::Matrix3d::Identity();
+            b.tail<3>() += w_rot * rot_err;
+        }
+
         H_final = H;
         n_valid_final = n_valid;
 
-        // Pure Gauss-Newton
+        // Pure Gauss-Newton (with rotation regularisation above)
         Eigen::Matrix<double, 6, 1> dx = H.ldlt().solve(-b);
 
         if (dx.hasNaN()) break;

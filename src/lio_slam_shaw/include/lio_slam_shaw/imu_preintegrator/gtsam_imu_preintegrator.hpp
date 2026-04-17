@@ -13,6 +13,7 @@
 #include <deque>
 #include <memory>
 #include <mutex>
+#include <vector>
 
 #include "lio_slam_shaw/core/i_imu_preintegrator.hpp"
 
@@ -26,11 +27,12 @@ struct GtsamImuPreintegratorParams {
     double imu_gyr_bias_noise = 3.5640318696367613e-05;
 
     size_t marginalization_threshold = 100;
+    size_t init_frames = 10;  // number of LiDAR frames for multi-frame initialization
 
     Eigen::Isometry3d T_base_imu = Eigen::Isometry3d::Identity();
 };
 
-enum class PreintegratorState { WAITING_FOR_FIRST_FRAME, INITIALIZED, OPTIMIZING };
+enum class PreintegratorState { WAITING_FOR_FIRST_FRAME, INITIALIZING, OPTIMIZING };
 
 class GtsamImuPreintegrator : public core::IImuPreintegrator {
 public:
@@ -49,13 +51,18 @@ public:
 
 private:
     void integrateImusAndPredictNoLock(const std::vector<core::ImuData>& imus);
-    void initFirstFrame(const gtsam::Pose3& current_pose);
+    void initFirstFrame(
+        const gtsam::Pose3& current_pose,
+        const gtsam::imuBias::ConstantBias& init_bias = gtsam::imuBias::ConstantBias());
     void resetOptimization();
     void marginalizeOldFactors();
     bool calculateImuBias(const gtsam::Pose3& current_pose, gtsam::SharedNoiseModel pose_noise,
                           const std::vector<core::ImuData>& opt_imu_segment);
     bool failureDetection(const gtsam::Vector3& velCur,
                           const gtsam::imuBias::ConstantBias& biasCur);
+    /// Multi-frame batch initialization: solve for velocities and IMU bias
+    /// using collected scan-matched poses and IMU data.
+    gtsam::imuBias::ConstantBias solveInitBias();
 
     gtsam::Pose3 toGtsamPose(const Eigen::Isometry3d& pose) const;
     core::NavState fromGtsamNavState(const core::Timestamp& timestamp,
@@ -80,11 +87,26 @@ private:
 
     gtsam::NavState last_optimized_state_;
     gtsam::imuBias::ConstantBias last_optimized_bias_;
+    std::optional<gtsam::Pose3> last_scan_pose_imu_;  // previous scan matcher pose (IMU frame)
 
     core::NavState curr_state_{};
     core::ImuData last_imu_{};
 
     std::deque<core::NavState> nav_state_queue_;
+
+    // Multi-frame initialization buffers
+    struct InitFrame {
+        gtsam::Pose3 imu_pose;
+        std::vector<core::ImuData> imu_segment;  // IMU data between this frame and the next
+    };
+    std::vector<InitFrame> init_frames_buf_;
+
+    // Raw IMU data collected while waiting for the first LiDAR frame.
+    // Used to compute the static gyro mean as a bias seed.
+    static constexpr size_t kStaticImuMaxSamples = 500;
+    static constexpr size_t kMinStaticSamples = 200;  // gate: need ≥200 samples (~0.4s)
+    std::vector<core::ImuData> static_imu_buf_;
+    bool static_imu_done_ = false;  // true once the first LiDAR frame arrives — stops buffering
 };
 
 }  // namespace lio_slam_shaw
