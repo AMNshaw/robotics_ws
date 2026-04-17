@@ -18,12 +18,8 @@ std::optional<core::Keyframe::SharedPtr> IkdTreeMapBuilder::addFrame(
 
     const Eigen::Isometry3d& T_map_body = frame->matched_result.pose;
 
-    std::cerr << "IKD log1" << std::endl;
-
     size_t n_points = cloud_body->size();
     KD_TREE<core::PointXYZIRT>::PointVector points_world(n_points);
-
-    std::cerr << "IKD log2" << std::endl;
 
 #pragma omp parallel for num_threads(4) schedule(dynamic)
     for (size_t i = 0; i < n_points; ++i) {
@@ -35,7 +31,6 @@ std::optional<core::Keyframe::SharedPtr> IkdTreeMapBuilder::addFrame(
         points_world[i].y = static_cast<float>(pw.y());
         points_world[i].z = static_cast<float>(pw.z());
     }
-    std::cerr << "IKD log3: OpenMP loop finished smoothly." << std::endl;
     auto local_tree = ikd_tree_;
 
     if (is_first_frame_) {
@@ -43,8 +38,6 @@ std::optional<core::Keyframe::SharedPtr> IkdTreeMapBuilder::addFrame(
         is_first_frame_ = false;
     } else
         local_tree->Add_Points(points_world, true);
-
-    std::cerr << "Added " << points_world.size() << " points to the local IKD tree." << std::endl;
 
     if (is_updating_map_.load()) {
         KD_TREE<core::PointXYZIRT>::PointVector points_corrected = points_world;
@@ -127,12 +120,18 @@ bool IkdTreeMapBuilder::searchKNearestPoints(const core::PointXYZIRT& query_pt, 
                                              std::vector<float>& out_distances) const {
     if (!ikd_tree_) return false;
 
-    KD_TREE<core::PointXYZIRT>::PointVector internal_neighbors;
+    // ikd_tree's Nearest_Search internally swap()s both output vectors,
+    // destroying any pre-allocated capacity. Use throwaway thread_local
+    // buffers so the swap cost stays inside this function and does not
+    // propagate to callers.
+    thread_local KD_TREE<core::PointXYZIRT>::PointVector tls_neighbors;
+    thread_local std::vector<float> tls_distances;
 
     const_cast<KD_TREE<core::PointXYZIRT>*>(ikd_tree_.get())
-        ->Nearest_Search(query_pt, k, internal_neighbors, out_distances, search_dist);
+        ->Nearest_Search(query_pt, k, tls_neighbors, tls_distances, search_dist);
 
-    out_neighbors.assign(internal_neighbors.begin(), internal_neighbors.end());
+    out_neighbors.assign(tls_neighbors.begin(), tls_neighbors.end());
+    out_distances.assign(tls_distances.begin(), tls_distances.end());
 
     return true;
 }

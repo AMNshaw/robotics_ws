@@ -25,7 +25,7 @@
 
       scan_preprocessor:
         type: "deskew"
-        voxel_leaf_size: 0.5
+        voxel_leaf_size: 0.8
 
       feature_extractor:
         type: "passthrough"
@@ -33,11 +33,11 @@
       scan_matcher:
         type: "ikd_tree"
         k_neighbors: 5
-        max_iterations: 30
-        convergence_threshold: 5e-4
+        max_iterations: 15
+        convergence_threshold: 1e-3
         min_valid_points: 50
-        degenerate_threshold: 100.0
-        max_search_dist: 0.5
+        degenerate_threshold: 10000.0
+        max_search_dist: 1.0
         min_plane_points: 5
         plane_valid_threshold: 0.1
 
@@ -47,7 +47,7 @@
         keyframe_rotation_threshold: 0.2
         ikd_delete_param: 0.5
         ikd_balance_param: 0.6
-        ikd_downsample_size: 0.3
+        ikd_downsample_size: 0.5
         
       loop_closure:
         type: "ikd_tree"
@@ -58,7 +58,7 @@
           max_iterations: 100
           convergence_threshold: 1e-5
           min_valid_points: 50
-          degenerate_threshold: 100.0
+          degenerate_threshold: 10000.0
           min_plane_points: 5
           max_search_dist: 2.0
           plane_valid_threshold: 0.1

@@ -29,6 +29,7 @@ core::ScanMatchResult IkdTreeScanMatcher::match(const core::FeatureSet& features
 
     Eigen::Matrix<double, 6, 6> H_final = Eigen::Matrix<double, 6, 6>::Zero();
     int n_valid_final = 0;
+    double prev_dx_norm = std::numeric_limits<double>::max();
 
     for (int iter = 0; iter < params_.max_iterations; ++iter) {
         const Eigen::Isometry3d T_map_lidar = result.pose * T_base_lidar_;
@@ -37,8 +38,15 @@ core::ScanMatchResult IkdTreeScanMatcher::match(const core::FeatureSet& features
 
         std::vector<NearestPlaneResult> nearest_planes;
         nearest_planes.resize(cloud->size());
-#pragma omp parallel for schedule(static)
-        for (int i = 0; i < static_cast<int>(cloud->size()); ++i) {
+
+        const int n_pts = static_cast<int>(cloud->size());
+#pragma omp parallel for schedule(static) num_threads(4)
+        for (int i = 0; i < n_pts; ++i) {
+            thread_local std::vector<core::PointXYZIRT> neighbors;
+            thread_local std::vector<float> distances;
+            neighbors.clear();
+            distances.clear();
+
             const auto& pt = (*cloud)[i];
             core::PointXYZIRT query_map_pt = pt;
             query_map_pt.x =
@@ -50,8 +58,6 @@ core::ScanMatchResult IkdTreeScanMatcher::match(const core::FeatureSet& features
             query_map_pt.z =
                 static_cast<float>(R_map_lidar(2, 0) * pt.x + R_map_lidar(2, 1) * pt.y +
                                    R_map_lidar(2, 2) * pt.z + t_map_lidar.z());
-            std::vector<core::PointXYZIRT> neighbors;
-            std::vector<float> distances;
             if (!map_builder_->searchKNearestPoints(query_map_pt, params_.k_neighbors,
                                                     params_.max_search_dist, neighbors, distances))
                 continue;
@@ -80,6 +86,9 @@ core::ScanMatchResult IkdTreeScanMatcher::match(const core::FeatureSet& features
 
             double r = normal.dot(n.point_in_map - n.centroid);
 
+            // Outlier rejection
+            if (std::abs(r) > 0.3) continue;
+
             Eigen::Matrix<double, 6, 1> J;
             J.head<3>() = normal;
             Eigen::Vector3d pt_diff = n.point_in_map - t_map_lidar;
@@ -95,25 +104,29 @@ core::ScanMatchResult IkdTreeScanMatcher::match(const core::FeatureSet& features
             break;
         }
 
-        Eigen::Matrix<double, 6, 1> dx = H.ldlt().solve(-b);
-
-        if (dx.hasNaN()) {
-            std::cerr << "[Warning] Solver produced NaN, aborting iteration." << std::endl;
-            break;
-        }
-
-        result.pose = applyLieUpdate(result.pose, dx, t_map_lidar);
-
         H_final = H;
         n_valid_final = n_valid;
 
-        std::cerr << "Iteration " << iter << ": dx norm = " << dx.norm()
-                  << ", valid points = " << n_valid << std::endl;
+        // Pure Gauss-Newton
+        Eigen::Matrix<double, 6, 1> dx = H.ldlt().solve(-b);
 
-        if (dx.norm() < params_.convergence_threshold) {
+        if (dx.hasNaN()) break;
+
+        double dx_norm = dx.norm();
+
+        result.pose = applyLieUpdate(result.pose, dx, t_map_lidar);
+
+        if (dx_norm < params_.convergence_threshold) {
             result.is_converged = true;
             break;
         }
+
+        // Early stop: if dx is oscillating (increasing after decreasing)
+        if (dx_norm > prev_dx_norm * 1.5 && prev_dx_norm < 0.01) {
+            result.is_converged = true;
+            break;
+        }
+        prev_dx_norm = dx_norm;
     }
 
     if (n_valid_final > 0) {
@@ -121,6 +134,10 @@ core::ScanMatchResult IkdTreeScanMatcher::match(const core::FeatureSet& features
         result.covariance = computeCovariance(H_final, n_valid_final);
         result.fitness_score = 0.0;
     }
+
+    std::cerr << "[ScanMatcher] Result: " << result.pose.translation().transpose()
+              << " valid_points=" << n_valid_final << " degenerate=" << result.is_degenerate
+              << std::endl;
 
     return result;
 }

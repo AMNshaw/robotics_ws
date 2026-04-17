@@ -7,7 +7,7 @@
 namespace lio_slam_shaw::lidar_preprocessor {
 
 struct ImuDeskewPreprocessorParams {
-    float voxel_leaf_size = 0.2f;
+    float voxel_leaf_size = 0.5f;
 };
 
 class ImuDeskewPreprocessor : public core::IScanPreprocessor {

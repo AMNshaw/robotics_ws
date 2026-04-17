@@ -67,26 +67,15 @@ void SlamProcessor::frontendThread() {
             std::shared_lock<std::shared_mutex> map_lock(map_mutex_);
             std::optional<LidarFrame::SharedPtr> lidar_frame_opt = front_end_->processPipeline();
 
-            std::cerr << "FrontEnd pipeline processed. Checking if a keyframe is generated..."
-                      << std::endl;
-
             if (!lidar_frame_opt.has_value()) continue;
             auto lidar_frame = lidar_frame_opt.value();
             keyframe_to_push = map_builder_->addFrame(lidar_frame);
 
-            std::cerr << "Keyframe generated: " << (keyframe_to_push.has_value() ? "Yes" : "No")
-                      << std::endl;
-
             {
-                std::cerr << "Visualization data enqueued. Queue size: " << viz_queue_.size()
-                          << std::endl;
                 std::lock_guard<std::mutex> viz_lock(viz_mutex_);
                 viz_queue_.emplace_back(VisualizationData{
                     lidar_frame->timestamp, lidar_frame->state_odom.pose,
                     back_end_->getGlobalCorrection(), lidar_frame->deskewed_cloud});
-
-                std::cerr << "Visualization data enqueued. Queue size: " << viz_queue_.size()
-                          << std::endl;
 
                 if (viz_queue_.size() > 5) {
                     viz_queue_.pop_front();
@@ -96,8 +85,6 @@ void SlamProcessor::frontendThread() {
         if (keyframe_to_push.has_value()) {
             std::lock_guard<std::mutex> backend_lock(backend_mutex_);
             keyframe_queue_.push(keyframe_to_push.value());
-            std::cerr << "Keyframe enqueued to BackEnd. Queue size: " << keyframe_queue_.size()
-                      << std::endl;
             backend_cv_.notify_one();
         }
     }

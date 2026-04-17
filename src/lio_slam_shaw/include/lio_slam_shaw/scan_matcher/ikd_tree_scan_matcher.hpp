@@ -12,14 +12,14 @@
 namespace lio_slam_shaw::scan_matcher {
 
 struct IkdTreeScanMatcherParams {
-    int k_neighbors = 5;
-    int max_iterations = 30;
-    double convergence_threshold = 1e-5;
+    int k_neighbors = 3;
+    int max_iterations = 10;
+    double convergence_threshold = 1e-3;
     int min_valid_points = 50;
     double degenerate_threshold = 100.0;
 
     float max_search_dist = 1.0;
-    int min_plane_points = 5;
+    int min_plane_points = 3;
     double plane_valid_threshold = 0.1;
 
     Eigen::Isometry3d T_base_lidar = Eigen::Isometry3d::Identity();

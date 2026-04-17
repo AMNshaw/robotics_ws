@@ -27,6 +27,10 @@ bool SensorDataManager::getBatchImuData(const Timestamp& start_time, const Times
 
     out_imu_batch.clear();
 
+    while (imu_queue_.size() > 2 && imu_queue_[1].timestamp < start_time) {
+        imu_queue_.pop_front();
+    }
+
     for (const auto& imu : imu_queue_) {
         if (imu.timestamp >= start_time && imu.timestamp <= end_time) {
             out_imu_batch.push_back(imu);

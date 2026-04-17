@@ -90,6 +90,9 @@ void GtsamImuPreintegrator::integrateImusAndPredictNoLock(const std::vector<core
         nav_state.angular_vel =
             Eigen::Matrix3d(T_base_imu_.rotation().matrix().cast<double>()) * gyr_corrected;
         nav_state_queue_.push_back(nav_state);
+        if (nav_state_queue_.size() > 2000) {
+            nav_state_queue_.pop_front();
+        }
 
         last_imu_ = imu;
     }
@@ -110,13 +113,25 @@ void GtsamImuPreintegrator::updateBiasAndRepropagateImus(
     if (state_ == PreintegratorState::WAITING_FOR_FIRST_FRAME) {
         resetOptimization();
         initFirstFrame(imu_pose);
-        state_ = PreintegratorState::INITIALIZED;
+
+        imu_integrator_predict_->resetIntegrationAndSetBias(last_optimized_bias_);
+        state_ = PreintegratorState::OPTIMIZING;
+
+        nav_state_queue_.clear();
+        integrateImusAndPredictNoLock(reprop_imu_segment);
         return;
     }
 
-    if (graph_node_index_ == params_.marginalization_threshold) {
-        marginalizeOldFactors();
-        graph_node_index_ = 1;
+    try {
+        if (graph_node_index_ == params_.marginalization_threshold) {
+            marginalizeOldFactors();
+            graph_node_index_ = 1;
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "[ImuPreintegrator] Marginalization failed, resetting: " << e.what()
+                  << std::endl;
+        state_ = PreintegratorState::WAITING_FOR_FIRST_FRAME;
+        return;
     }
 
     if (!calculateImuBias(
@@ -253,6 +268,8 @@ bool GtsamImuPreintegrator::calculateImuBias(const gtsam::Pose3& imu_pose,
         imu_integrator_opt_->integrateMeasurement(avg_acc, avg_gyr, dt);
     }
 
+    const double dt_between = std::max(imu_integrator_opt_->deltaTij(), 1e-5);
+
     gtsam::NonlinearFactorGraph graph;
     gtsam::Values values;
 
@@ -262,8 +279,7 @@ bool GtsamImuPreintegrator::calculateImuBias(const gtsam::Pose3& imu_pose,
                                preint_imu));
     graph.add(gtsam::BetweenFactor<gtsam::imuBias::ConstantBias>(
         B(graph_node_index_ - 1), B(graph_node_index_), gtsam::imuBias::ConstantBias(),
-        gtsam::noiseModel::Diagonal::Sigmas(sqrt(imu_integrator_opt_->deltaTij()) *
-                                            noise_model_between_bias_)));
+        gtsam::noiseModel::Diagonal::Sigmas(sqrt(dt_between) * noise_model_between_bias_)));
     graph.add(gtsam::PriorFactor<gtsam::Pose3>(X(graph_node_index_), imu_pose, pose_cov));
 
     gtsam::NavState prop_state =
@@ -272,13 +288,20 @@ bool GtsamImuPreintegrator::calculateImuBias(const gtsam::Pose3& imu_pose,
     values.insert(V(graph_node_index_), prop_state.velocity());
     values.insert(B(graph_node_index_), last_optimized_bias_);
 
-    optimizer_->update(graph, values);
-    optimizer_->update();
+    try {
+        optimizer_->update(graph, values);
+        optimizer_->update();
 
-    gtsam::Values result = optimizer_->calculateEstimate();
-    last_optimized_state_ = gtsam::NavState(result.at<gtsam::Pose3>(X(graph_node_index_)),
-                                            result.at<gtsam::Vector3>(V(graph_node_index_)));
-    last_optimized_bias_ = result.at<gtsam::imuBias::ConstantBias>(B(graph_node_index_));
+        gtsam::Values result = optimizer_->calculateEstimate();
+        last_optimized_state_ = gtsam::NavState(result.at<gtsam::Pose3>(X(graph_node_index_)),
+                                                result.at<gtsam::Vector3>(V(graph_node_index_)));
+        last_optimized_bias_ = result.at<gtsam::imuBias::ConstantBias>(B(graph_node_index_));
+    } catch (const gtsam::IndeterminantLinearSystemException& e) {
+        std::cerr << "[ImuPreintegrator] ISAM2 indeterminant system, resetting: " << e.what()
+                  << std::endl;
+        resetOptimization();
+        return false;
+    }
 
     imu_integrator_opt_->resetIntegrationAndSetBias(last_optimized_bias_);
 

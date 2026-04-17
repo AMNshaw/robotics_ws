@@ -6,3 +6,5 @@ log/
 *.zip
 *.db3
 *.mcap
+
+src/lio_slam_shaw/bags/
