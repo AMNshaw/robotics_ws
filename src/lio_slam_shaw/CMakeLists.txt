@@ -80,6 +80,15 @@ target_link_libraries(feature_extractor
   ${PCL_LIBRARIES}
 )
 
+add_library(odometry_estimator
+  src/odometry_estimator/fast_lio_odometry.cpp
+)
+target_link_libraries(odometry_estimator
+  map_builder
+  ${PCL_LIBRARIES}
+  OpenMP::OpenMP_CXX
+)
+
 add_library(map_optimizer
   src/map_optimizer/gtsam_map_optimizer.cpp
 )
@@ -139,6 +148,7 @@ target_link_libraries(factory
   map_builder
   map_optimizer
   loop_closure_detector
+  odometry_estimator
   gtsam
 )
 ament_target_dependencies(factory
