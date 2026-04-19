@@ -40,12 +40,6 @@ void SlamProcessor::feedImu(const ImuData& imu) {
     }
 }
 
-void SlamProcessor::setExtrinsics(const Eigen::Isometry3d& T_base_lidar,
-                                  const Eigen::Isometry3d& T_base_imu) {
-    front_end_->setLidarExtrinsics(T_base_lidar);
-    front_end_->setImuExtrinsics(T_base_imu);
-}
-
 void SlamProcessor::registerOdometryCallback(const SlamProcessor::OdometryCallback& callback) {
     odom_callback_ = callback;
 }

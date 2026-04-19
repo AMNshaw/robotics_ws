@@ -114,10 +114,9 @@ add_library(core
   src/core/slam_processor.cpp
 )
 target_link_libraries(core
-  imu_preintegrator
+  odometry_estimator
   scan_preprocessor
   feature_extractor
-  scan_matcher
   map_builder
   map_optimizer
   loop_closure_detector
@@ -135,6 +134,7 @@ add_library(factory
   src/factory/loop_closure_detector_factory.cpp
   src/factory/map_builder_factory.cpp
   src/factory/map_optimizer_factory.cpp
+  src/factory/odometry_estimator_factory.cpp
   src/factory/scan_matcher_factory.cpp
   src/factory/scan_preprocessor_factory.cpp
   src/factory/slam_factory.cpp

@@ -3,6 +3,7 @@
 
 #include <Eigen/Dense>
 #include <memory>
+#include <vector>
 
 #include "lio_slam_shaw/core/sensor_data_types.hpp"
 
@@ -33,12 +34,12 @@ public:
     // Latest IMU-predicted state; used by FrontEnd to seed the deskew nav snapshot.
     virtual NavState getLatestState() const = 0;
 
+    /// Return a chronological snapshot of predicted states (for deskewing).
+    virtual std::vector<NavState> getNavStateQueueSnapshot() const = 0;
+
     // Called by BackEnd after loop closure / map optimization to keep odom
     // frame consistent with the global map frame.
     virtual void setMapToOdomTransform(const Eigen::Isometry3d& T_map_odom) = 0;
-
-    virtual void setLidarExtrinsics(const Eigen::Isometry3d& T_base_lidar) = 0;
-    virtual void setImuExtrinsics(const Eigen::Isometry3d& T_base_imu) = 0;
 };
 
 }  // namespace lio_slam_shaw::core

@@ -44,8 +44,8 @@ class FastLioOdometry : public core::IOdometryEstimator {
 public:
     using SharedPtr = std::shared_ptr<FastLioOdometry>;
 
-    FastLioOdometry(core::IMapBuilder::SharedPtr map_builder,
-                    const FastLioOdometryParams& params = {});
+    FastLioOdometry(core::IMapBuilder::SharedPtr map_builder, const Eigen::Isometry3d& T_base_lidar,
+                    const Eigen::Isometry3d& T_base_imu, const FastLioOdometryParams& params = {});
     ~FastLioOdometry() override = default;
 
     // IOdometryEstimator interface
@@ -53,9 +53,8 @@ public:
     core::OdometryResult estimateWithFeatures(const core::FeatureSet& features,
                                               core::Timestamp lidar_time_start) override;
     core::NavState getLatestState() const override;
+    std::vector<core::NavState> getNavStateQueueSnapshot() const override;
     void setMapToOdomTransform(const Eigen::Isometry3d& T_map_odom) override;
-    void setLidarExtrinsics(const Eigen::Isometry3d& T_base_lidar) override;
-    void setImuExtrinsics(const Eigen::Isometry3d& T_base_imu) override;
 
 private:
     struct IeskfState {

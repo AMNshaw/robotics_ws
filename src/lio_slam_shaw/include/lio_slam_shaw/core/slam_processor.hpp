@@ -40,8 +40,6 @@ public:
     SlamProcessor(const SlamProcessor&) = delete;
     SlamProcessor& operator=(const SlamProcessor&) = delete;
 
-    void setExtrinsics(const Eigen::Isometry3d& T_base_lidar, const Eigen::Isometry3d& T_base_imu);
-
     void start();
 
     void feedLidar(const LidarData& lidar);

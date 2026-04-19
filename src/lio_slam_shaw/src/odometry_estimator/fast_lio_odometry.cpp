@@ -2,6 +2,8 @@
 
 #include <omp.h>
 
+#include <algorithm>
+#include <iterator>
 #include <numeric>
 #include <stdexcept>
 
@@ -13,14 +15,28 @@ static inline Eigen::Matrix3d skew(const Eigen::Vector3d& v) {
     return S;
 }
 
+// Linear interpolation of IMU between two bracketing samples at target timestamp.
+static core::ImuData interpolateImu(const core::ImuData& before, const core::ImuData& after,
+                                    const core::Timestamp& target) {
+    const double dt = core::getDeltaSec(before.timestamp, after.timestamp);
+    const double alpha = (dt > 0.0) ? core::getDeltaSec(before.timestamp, target) / dt : 0.0;
+    core::ImuData interp;
+    interp.timestamp = target;
+    interp.acc = before.acc + alpha * (after.acc - before.acc);
+    interp.gyr = before.gyr + alpha * (after.gyr - before.gyr);
+    return interp;
+}
+
 FastLioOdometry::FastLioOdometry(core::IMapBuilder::SharedPtr map_builder,
+                                 const Eigen::Isometry3d& T_base_lidar,
+                                 const Eigen::Isometry3d& T_base_imu,
                                  const FastLioOdometryParams& params)
-    : params_(params) {
+    : params_(params), T_base_lidar_(T_base_lidar) {
     map_builder_ = std::dynamic_pointer_cast<map_builder::IkdTreeMapBuilder>(map_builder);
     if (!map_builder_) {
         throw std::invalid_argument("FastLioOdometry requires an IkdTreeMapBuilder instance");
     }
-
+    T_imu_lidar_ = T_base_imu.inverse() * T_base_lidar;
     prev_scan_time_ = core::Timestamp::min();
 }
 
@@ -160,20 +176,49 @@ core::OdometryResult FastLioOdometry::estimateWithFeatures(const core::FeatureSe
         return empty;
     }
 
-    // 1. Collect IMU batch from prev scan to this scan start
+    // 1. Collect IMU batch [prev_scan_time_, lidar_time_start] with interpolated endpoints.
     std::vector<core::ImuData> imu_batch;
     {
-        // TODO: interpolate a "virtual" IMU measurement at lidar_time_start for more accurate
-        // propagation and bias update
         std::lock_guard<std::mutex> lock(imu_buf_mutex_);
 
-        for (const auto& imu : imu_buf_) {
-            if (prev_scan_time_ == core::Timestamp::min() || imu.timestamp > prev_scan_time_) {
-                if (imu.timestamp <= lidar_time_start) {
-                    imu_batch.push_back(imu);
-                }
-            }
+        // lower_bound comp: (element, value) → element.timestamp < value
+        // upper_bound comp: (value, element) → value < element.timestamp
+        auto lb_cmp = [](const core::ImuData& a, const core::Timestamp& t) {
+            return a.timestamp < t;
+        };
+        auto ub_cmp = [](const core::Timestamp& t, const core::ImuData& a) {
+            return t < a.timestamp;
+        };
+
+        // Note: no start-boundary interpolation needed — committed_state_.timestamp already
+        // equals prev_scan_time_, so a virtual sample there gives dt = 0 (no-op integrate).
+
+        // Collect all samples in (prev_scan_time_, lidar_time_start).
+        const auto start_it =
+            (prev_scan_time_ == core::Timestamp::min())
+                ? imu_buf_.begin()
+                : std::upper_bound(imu_buf_.begin(), imu_buf_.end(), prev_scan_time_, ub_cmp);
+        const auto end_it =
+            std::lower_bound(imu_buf_.begin(), imu_buf_.end(), lidar_time_start, lb_cmp);
+        // end_it points to the first sample >= lidar_time_start; copy everything before it.
+        imu_batch.assign(start_it, end_it);
+
+        // Interpolate end boundary at lidar_time_start.
+        // after_end_it = first sample >= lidar_time_start (= end_it).
+        // before = prev(end_it) if available.
+        const auto after_end_it = end_it;
+        const bool has_after = (after_end_it != imu_buf_.end());
+        const bool has_before = (after_end_it != imu_buf_.begin());
+        if (has_before && has_after) {
+            imu_batch.push_back(
+                interpolateImu(*std::prev(after_end_it), *after_end_it, lidar_time_start));
+        } else if (has_before) {
+            // No sample after lidar_time_start yet — extrapolate by repeating last sample.
+            core::ImuData extrap = *std::prev(after_end_it);
+            extrap.timestamp = lidar_time_start;
+            imu_batch.push_back(extrap);
         }
+
         while (imu_buf_.size() > 1 && imu_buf_.front().timestamp < prev_scan_time_) {
             imu_buf_.pop_front();
         }
@@ -183,7 +228,6 @@ core::OdometryResult FastLioOdometry::estimateWithFeatures(const core::FeatureSe
     // Propagates committed_state_ from prev_scan_time to lidar_time_start.
     // TODO: replace state_ with committed_state_ once dual-state refactor is complete.
 
-    std::vector<core::ImuData> reprop_batch;
     IeskfState reprop_start;
     {
         std::lock_guard<std::mutex> lock(committed_state_mutex_);
@@ -199,6 +243,7 @@ core::OdometryResult FastLioOdometry::estimateWithFeatures(const core::FeatureSe
         committed_state_ = iteratedUpdate(propagated, features);
         reprop_start = committed_state_;
     }
+    std::vector<core::ImuData> reprop_batch;
     {
         // Lock both mutexes in the same order as feedImu (predicted → imu) to avoid deadlock.
         // Holding both locks makes the reprop + predicted_states swap atomic:
@@ -537,18 +582,42 @@ core::NavState FastLioOdometry::getLatestState() const {
     return nav;
 }
 
+std::vector<core::NavState> FastLioOdometry::getNavStateQueueSnapshot() const {
+    // Snapshot committed_state_ first (lock order: committed → predicted).
+    IeskfState committed_snapshot;
+    {
+        std::lock_guard<std::mutex> c_lock(committed_state_mutex_);
+        committed_snapshot = committed_state_;
+    }
+
+    auto toNavState = [](const IeskfState& s) {
+        core::NavState nav;
+        nav.timestamp = s.timestamp;
+        nav.pose.linear() = s.R;
+        nav.pose.translation() = s.p;
+        nav.linear_vel = s.v;
+        nav.angular_vel = s.angular_vel;
+        nav.acc_bias = s.b_a;
+        nav.gyr_bias = s.b_g;
+        return nav;
+    };
+
+    std::vector<core::NavState> result;
+    result.push_back(toNavState(committed_snapshot));
+
+    {
+        std::lock_guard<std::mutex> lock(predicted_states_mutex_);
+        result.reserve(1 + predicted_states_.size());
+        for (const auto& ps : predicted_states_) {
+            result.push_back(toNavState(ps));
+        }
+    }
+    return result;
+}
+
 void FastLioOdometry::setMapToOdomTransform(const Eigen::Isometry3d& T_map_odom) {
     std::lock_guard<std::mutex> lock(committed_state_mutex_);
     T_map_odom_ = T_map_odom;
-}
-
-void FastLioOdometry::setLidarExtrinsics(const Eigen::Isometry3d& T_base_lidar) {
-    T_base_lidar_ = T_base_lidar;
-    // T_imu_lidar_ is updated when setImuExtrinsics is also called
-}
-
-void FastLioOdometry::setImuExtrinsics(const Eigen::Isometry3d& T_base_imu) {
-    T_imu_lidar_ = T_base_imu.inverse() * T_base_lidar_;
 }
 
 }  // namespace lio_slam_shaw::odometry_estimator
