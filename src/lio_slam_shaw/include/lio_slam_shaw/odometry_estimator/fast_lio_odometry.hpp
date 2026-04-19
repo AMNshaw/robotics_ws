@@ -22,7 +22,7 @@ struct FastLioOdometryParams {
 
     // iEKF solver
     int max_iterations = 30;
-    double state_converge_threshold = 1e-6;  // ||dx|| < threshold → converge
+    double state_converge_threshold = 1e-3;  // ||dx|| < threshold → converge
 
     // Point-to-plane matching (reuses the same scan search logic)
     int num_nearest_neighbors = 5;

@@ -349,7 +349,6 @@ FastLioOdometry::IeskfState FastLioOdometry::iteratedUpdate(const IeskfState& pr
         Eigen::MatrixXd H_raw(n_pts, 18);
         Eigen::VectorXd r_raw(n_pts);
         int valid_num = 0;
-
         for (int i = 0; i < n_pts; ++i) {
             if (!nearest_planes[i].valid) continue;
             const Eigen::Vector3d p_lidar((*cloud)[i].x, (*cloud)[i].y, (*cloud)[i].z);

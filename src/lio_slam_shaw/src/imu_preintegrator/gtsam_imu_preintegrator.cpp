@@ -243,14 +243,10 @@ std::optional<core::NavState> GtsamImuPreintegrator::queryNavState(const core::T
 
 void GtsamImuPreintegrator::initFirstFrame(const gtsam::Pose3& imu_pose,
                                            const gtsam::imuBias::ConstantBias& init_bias) {
-    // Bias prior: very tight σ=0.01 freezes bias near the static-mean estimate.
-    // The chain of BetweenFactors preserves relative smoothness, but a loose
-    // prior lets the ImuFactor+PosePrior accumulate enough pull to drag bias
-    // toward zero over ~20 frames. σ=0.01 keeps bias anchored.
     gtsam::noiseModel::Diagonal::shared_ptr prior_vel_noise =
         gtsam::noiseModel::Isotropic::Sigma(3, 1.0);
     gtsam::noiseModel::Diagonal::shared_ptr prior_bias_noise =
-        gtsam::noiseModel::Isotropic::Sigma(6, 1e-2);
+        gtsam::noiseModel::Isotropic::Sigma(6, 1e-1);
 
     gtsam::NonlinearFactorGraph graph;
     gtsam::Values values;
