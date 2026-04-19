@@ -89,6 +89,15 @@ target_link_libraries(odometry_estimator
   OpenMP::OpenMP_CXX
 )
 
+add_library(lio_initializer
+  src/initializer/sfm_lio_initializer.cpp
+)
+target_link_libraries(lio_initializer
+  scan_matcher
+  map_builder
+  ${PCL_LIBRARIES}
+)
+
 add_library(map_optimizer
   src/map_optimizer/gtsam_map_optimizer.cpp
 )
