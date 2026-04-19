@@ -54,18 +54,35 @@ core::LidarData ImuDeskewPreprocessor::processCloud(const std::vector<core::NavS
     if (!raw_cloud.cloud || raw_cloud.cloud->empty()) return raw_cloud;
     if (snapshot.empty()) return raw_cloud;
 
+    // --- 1. Downsample FIRST (26k → ~3k) to reduce deskew cost ---
+    auto input_cloud = raw_cloud.cloud;
+    if (params_.voxel_leaf_size > 0.0f) {
+        pcl::VoxelGrid<core::PointXYZIRT> voxel;
+        voxel.setLeafSize(params_.voxel_leaf_size, params_.voxel_leaf_size,
+                          params_.voxel_leaf_size);
+        voxel.setInputCloud(input_cloud);
+        auto filtered = std::make_shared<core::PointCloudIRT>();
+        voxel.filter(*filtered);
+        input_cloud = filtered;
+    }
+
+    // --- 2. Deskew the smaller cloud ---
     auto state_0 = interpolateNavState(snapshot, raw_cloud.time_start);
-    if (!state_0.has_value()) return raw_cloud;
+    if (!state_0.has_value()) {
+        core::LidarData result = raw_cloud;
+        result.cloud = input_cloud;
+        return result;
+    }
 
     const Eigen::Isometry3d T_0_inv = state_0->pose.inverse();
-    const int n = static_cast<int>(raw_cloud.cloud->size());
+    const int n = static_cast<int>(input_cloud->size());
 
     auto deskewed = std::make_shared<core::PointCloudIRT>();
     deskewed->resize(n);
 
 #pragma omp parallel for schedule(static)
     for (int i = 0; i < n; ++i) {
-        const auto& pt = raw_cloud.cloud->points[i];
+        const auto& pt = input_cloud->points[i];
         const auto pt_time =
             raw_cloud.time_start + std::chrono::duration_cast<std::chrono::nanoseconds>(
                                        std::chrono::duration<double>(static_cast<double>(pt.time)));
@@ -89,17 +106,6 @@ core::LidarData ImuDeskewPreprocessor::processCloud(const std::vector<core::NavS
 
     core::LidarData result = raw_cloud;
     result.cloud = deskewed;
-
-    if (params_.voxel_leaf_size > 0.0f) {
-        pcl::VoxelGrid<core::PointXYZIRT> voxel;
-        voxel.setLeafSize(params_.voxel_leaf_size, params_.voxel_leaf_size,
-                          params_.voxel_leaf_size);
-        voxel.setInputCloud(result.cloud);
-        auto filtered = std::make_shared<core::PointCloudIRT>();
-        voxel.filter(*filtered);
-        result.cloud = filtered;
-    }
-
     return result;
 }
 

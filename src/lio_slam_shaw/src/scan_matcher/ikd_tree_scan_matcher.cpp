@@ -160,7 +160,7 @@ core::ScanMatchResult IkdTreeScanMatcher::match(const core::FeatureSet& features
         result.fitness_score = 0.0;
     }
 
-    std::cerr << "[ScanMatcher] Result: " << result.pose.translation().transpose()
+    std::clog << "[ScanMatcher] Result: " << result.pose.translation().transpose()
               << " valid_points=" << n_valid_final << " degenerate=" << result.is_degenerate
               << std::endl;
 

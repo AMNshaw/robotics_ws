@@ -21,24 +21,25 @@ struct FastLioOdometryParams {
     double measurement_noise = 0.1;  // point-to-plane residual noise (for covariance computation)
 
     // iEKF solver
-    int max_iterations = 30;
+    int max_iterations = 5;
     double state_converge_threshold = 1e-3;  // ||dx|| < threshold → converge
 
     // Point-to-plane matching (reuses the same scan search logic)
     int num_nearest_neighbors = 5;
     int min_plane_points = 3;
     double plane_valid_threshold = 0.1;  // max eigenvalue ratio for valid
-    float search_radius = 1.0f;
+    float search_radius = 0.5f;
     double min_plane_eigenvalue_ratio = 0.1;   // planarity check
     double max_point_to_plane_distance = 0.3;  // outlier rejection threshold
 };
 
-// iEKF state vector (18-DOF on manifold):
+// iEKF state vector (15-DOF on manifold):
 //   rotation    R ∈ SO(3)   — world←body
 //   position    p ∈ R^3     — in world frame
 //   velocity    v ∈ R^3     — in world frame
-//   gyro  bias  b_g ∈ R^3
 //   accel bias  b_a ∈ R^3
+//   gyro  bias  b_g ∈ R^3
+// Gravity is treated as a known constant (not estimated).
 
 class FastLioOdometry : public core::IOdometryEstimator {
 public:
@@ -67,8 +68,18 @@ private:
         // Bias-corrected angular velocity from the last IMU measurement (for nav output)
         Eigen::Vector3d angular_vel = Eigen::Vector3d::Zero();
 
-        // Error-state covariance (18×18)
-        Eigen::Matrix<double, 18, 18> P = Eigen::Matrix<double, 18, 18>::Identity() * 1e-4;
+        // Error-state covariance (15×15)
+        // State ordering: [δp(0:3), δv(3:6), δθ(6:9), δb_a(9:12), δb_g(12:15)]
+        // Gravity is NOT in state — treated as known constant.
+        Eigen::Matrix<double, 15, 15> P = []() {
+            Eigen::Matrix<double, 15, 15> P0 = Eigen::Matrix<double, 15, 15>::Zero();
+            P0.diagonal().segment<3>(0).setConstant(1e-3);   // position
+            P0.diagonal().segment<3>(3).setConstant(1e-3);   // velocity
+            P0.diagonal().segment<3>(6).setConstant(1e-3);   // rotation
+            P0.diagonal().segment<3>(9).setConstant(1e-3);   // acc bias
+            P0.diagonal().segment<3>(12).setConstant(1e-4);  // gyr bias
+            return P0;
+        }();
     };
 
     struct NearestPlaneResult {
@@ -80,7 +91,7 @@ private:
 
     struct PointResidual {
         bool valid = false;
-        Eigen::Matrix<double, 1, 18> H = Eigen::Matrix<double, 1, 18>::Zero();
+        Eigen::Matrix<double, 1, 15> H = Eigen::Matrix<double, 1, 15>::Zero();
         double r = 0.0;
     };
 
@@ -111,9 +122,6 @@ private:
                                      const Eigen::Vector3d& sensor_origin_in_map,
                                      const Eigen::Matrix3d& R_map_body) const;
 
-    // Static bias initialisation from the first N static IMU samples.
-    void tryInitBias(const core::ImuData& imu);
-
     FastLioOdometryParams params_;
     std::shared_ptr<map_builder::IkdTreeMapBuilder> map_builder_;
 
@@ -132,13 +140,7 @@ private:
     std::deque<core::ImuData> imu_buf_;
     core::Timestamp prev_scan_time_;
 
-    // Static IMU bias init (same approach as GtsamImuPreintegrator)
-    static constexpr int kMinStaticSamples = 200;
-    static constexpr int kMaxStaticSamples = 500;
-    std::vector<core::ImuData> static_imu_buf_;
-    bool bias_initialized_ = false;
-
-    // Gravity vector in world frame
+    // Gravity vector in world frame (constant — not estimated)
     static constexpr double kGravity = 9.80511;
     Eigen::Vector3d gravity_{0.0, 0.0, -kGravity};
 };

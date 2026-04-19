@@ -130,7 +130,7 @@ void GtsamImuPreintegrator::updateBiasAndRepropagateImus(
         // Gate: discard LiDAR frames until we have enough static IMU data
         // for a reliable bias estimate.  At 500Hz this is ~0.4s.
         if (static_imu_buf_.size() < kMinStaticSamples) {
-            std::cerr << "[ImuPreintegrator] Waiting for static IMU data: "
+            std::clog << "[ImuPreintegrator] Waiting for static IMU data: "
                       << static_imu_buf_.size() << "/" << kMinStaticSamples << std::endl;
             return;
         }
@@ -139,7 +139,7 @@ void GtsamImuPreintegrator::updateBiasAndRepropagateImus(
         // enough, and the 10-frame delay costs valuable time.
         static_imu_done_ = true;
         gtsam::imuBias::ConstantBias init_bias = solveInitBias();
-        std::cerr << "[ImuPreintegrator] Static init done. bias_acc="
+        std::clog << "[ImuPreintegrator] Static init done. bias_acc="
                   << init_bias.accelerometer().transpose()
                   << " bias_gyr=" << init_bias.gyroscope().transpose() << std::endl;
 
@@ -168,7 +168,7 @@ void GtsamImuPreintegrator::updateBiasAndRepropagateImus(
             graph_node_index_ = 1;
         }
     } catch (const std::exception& e) {
-        std::cerr << "[ImuPreintegrator] Marginalization failed, resetting: " << e.what()
+        std::clog << "[ImuPreintegrator] Marginalization failed, resetting: " << e.what()
                   << std::endl;
         state_ = PreintegratorState::WAITING_FOR_FIRST_FRAME;
         return;
@@ -317,7 +317,7 @@ gtsam::imuBias::ConstantBias GtsamImuPreintegrator::solveInitBias() {
     // acc_bias = acc_meas_mean − (0, 0, g)
     Eigen::Vector3d acc_bias = acc_mean - Eigen::Vector3d(0.0, 0.0, params_.gravity);
 
-    std::cerr << "[ImuPreintegrator] solveInitBias: static " << static_imu_buf_.size()
+    std::clog << "[ImuPreintegrator] solveInitBias: static " << static_imu_buf_.size()
               << " samples, acc_mean=" << acc_mean.transpose()
               << ", gyr_mean=" << gyr_mean.transpose() << " → acc_bias=" << acc_bias.transpose()
               << ", gyr_bias=" << gyr_mean.transpose() << std::endl;
@@ -345,7 +345,7 @@ bool GtsamImuPreintegrator::calculateImuBias(const gtsam::Pose3& imu_pose,
 
     const double dt_between = std::max(imu_integrator_opt_->deltaTij(), 1e-5);
 
-    std::cerr << "[ImuPreintegrator] calculateImuBias: imu_seg=" << opt_imu_segment.size()
+    std::clog << "[ImuPreintegrator] calculateImuBias: imu_seg=" << opt_imu_segment.size()
               << " deltaTij=" << dt_between << " node=" << graph_node_index_
               << " vel=" << last_optimized_state_.velocity().transpose()
               << " abias=" << last_optimized_bias_.accelerometer().transpose()
@@ -397,7 +397,7 @@ bool GtsamImuPreintegrator::calculateImuBias(const gtsam::Pose3& imu_pose,
                                                 result.at<gtsam::Vector3>(V(graph_node_index_)));
         last_optimized_bias_ = result.at<gtsam::imuBias::ConstantBias>(B(graph_node_index_));
     } catch (const gtsam::IndeterminantLinearSystemException& e) {
-        std::cerr << "[ImuPreintegrator] ISAM2 indeterminant system, resetting: " << e.what()
+        std::clog << "[ImuPreintegrator] ISAM2 indeterminant system, resetting: " << e.what()
                   << std::endl;
         resetOptimization();
         last_scan_pose_imu_.reset();

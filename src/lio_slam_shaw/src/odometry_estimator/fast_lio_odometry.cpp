@@ -3,6 +3,9 @@
 #include <omp.h>
 
 #include <algorithm>
+#include <chrono>
+#include <iomanip>
+#include <iostream>
 #include <iterator>
 #include <numeric>
 #include <stdexcept>
@@ -45,24 +48,20 @@ FastLioOdometry::FastLioOdometry(core::IMapBuilder::SharedPtr map_builder,
 // ---------------------------------------------------------------------------
 
 void FastLioOdometry::feedImu(const core::ImuData& imu) {
-    if (!bias_initialized_) {
-        tryInitBias(imu);
-    }
-
     {
         std::lock_guard<std::mutex> imu_lock(imu_buf_mutex_);
         imu_buf_.push_back(imu);
 
-        // Trim stale IMU data (keep at most 10 seconds behind prev_scan_time_)
-        constexpr auto kMaxLag = std::chrono::seconds(10);
-        while (imu_buf_.size() > 1 &&
-               (imu_buf_.front().timestamp + kMaxLag) < imu_buf_.back().timestamp) {
-            imu_buf_.pop_front();
+        // Trim only IMU samples that the frontend has already consumed.
+        // prev_scan_time_ marks the latest lidar frame processed by estimateWithFeatures.
+        // Keeping everything after prev_scan_time_ ensures that even when the frontend
+        // falls behind real-time, no needed IMU data is discarded.
+        if (prev_scan_time_ != core::Timestamp::min()) {
+            while (imu_buf_.size() > 2 && imu_buf_[1].timestamp <= prev_scan_time_) {
+                imu_buf_.pop_front();
+            }
         }
     }
-
-    // Don't propagate predicted states until bias is initialised — integration would use b=0.
-    if (!bias_initialized_) return;
 
     {
         // Snapshot committed_state_ under its own lock first to avoid data race.
@@ -125,42 +124,37 @@ FastLioOdometry::IeskfState FastLioOdometry::propagateStep(const IeskfState& sta
     const Eigen::Vector3d omega = imu.gyr - state.b_g;
     const Eigen::Vector3d acc = imu.acc - state.b_a;
 
-    // State ordering: [δp(0:3), δv(3:6), δθ(6:9), δb_a(9:12), δb_g(12:15), δg(15:18)]
-    // Matches Fast-LIO paper F matrix (b_a before b_g per image convention)
-    // F (18×18) — discrete-time linearisation (first-order Euler)
-    Eigen::Matrix<double, 18, 18> F = Eigen::Matrix<double, 18, 18>::Identity();
+    // State ordering: [δp(0:3), δv(3:6), δθ(6:9), δb_a(9:12), δb_g(12:15)]
+    // Gravity is a known constant — NOT in state.
+    // F (15×15) — discrete-time linearisation (first-order Euler)
+    Eigen::Matrix<double, 15, 15> F = Eigen::Matrix<double, 15, 15>::Identity();
     // δp: ṗ = v  →  δp_{k+1} += δv dt
     F.block<3, 3>(0, 3) = Eigen::Matrix3d::Identity() * dt;  // ∂δp/∂δv
-    // δv: v̇ = R(a)+g  →  δv_{k+1} += -R[a]×δθ dt − R δb_a dt + δg dt
-    F.block<3, 3>(3, 6) = -state.R * skew(acc) * dt;          // ∂δv/∂δθ
-    F.block<3, 3>(3, 9) = -state.R * dt;                      // ∂δv/∂δb_a
-    F.block<3, 3>(3, 15) = Eigen::Matrix3d::Identity() * dt;  // ∂δv/∂δg
+    // δv: v̇ = R(a)+g  →  δv_{k+1} += -R[a]×δθ dt − R δb_a dt
+    F.block<3, 3>(3, 6) = -state.R * skew(acc) * dt;  // ∂δv/∂δθ
+    F.block<3, 3>(3, 9) = -state.R * dt;              // ∂δv/∂δb_a
     // δθ: Ṙ = R[ω]×  →  δθ_{k+1} = (I−[ω]×dt) δθ − δb_g dt
     F.block<3, 3>(6, 6) = Eigen::Matrix3d::Identity() - skew(omega) * dt;  // ∂δθ/∂δθ
     F.block<3, 3>(6, 12) = -Eigen::Matrix3d::Identity() * dt;              // ∂δθ/∂δb_g
-    // b_a, b_g, g: identity (random walk driven by Q)
+    // b_a, b_g: identity (random walk driven by Q)
 
-    // G (18×12) = F_i from paper; noise input cols = [v_i/acc(0:3), θ_i/gyr(3:6),
-    // A_i/acc_bias(6:9), Ω_i/gyr_bias(9:12)] Q_i = diag(V_i, Θ_i, A_i, Ω_i) — same column order
-    Eigen::Matrix<double, 18, 12> G = Eigen::Matrix<double, 18, 12>::Zero();
-    G.block<3, 3>(3, 0) = Eigen::Matrix3d::Identity();   // δv ← acc noise (V_i)
-    G.block<3, 3>(6, 3) = Eigen::Matrix3d::Identity();   // δθ ← gyr noise (Θ_i)
-    G.block<3, 3>(9, 6) = Eigen::Matrix3d::Identity();   // δb_a ← acc_bias walk (A_i)
-    G.block<3, 3>(12, 9) = Eigen::Matrix3d::Identity();  // δb_g ← gyr_bias walk (Ω_i)
+    // G (15×12) — noise input matrix.
+    // Columns: [w_acc(0:3), w_gyr(3:6), w_ba(6:9), w_bg(9:12)]
+    Eigen::Matrix<double, 15, 12> G = Eigen::Matrix<double, 15, 12>::Zero();
+    G.block<3, 3>(3, 0) = -state.R;                      // δv ← acc noise (body→world)
+    G.block<3, 3>(6, 3) = -Eigen::Matrix3d::Identity();  // δθ ← gyr noise
+    G.block<3, 3>(9, 6) = Eigen::Matrix3d::Identity();   // δb_a ← acc_bias walk
+    G.block<3, 3>(12, 9) = Eigen::Matrix3d::Identity();  // δb_g ← gyr_bias walk
 
-    // Q_i: discrete-time noise covariance (matches paper)
-    //   measurement noise (gyr/acc):  σ² Δt²  (V_i, Θ_i)
-    //   bias random walk:             σ² Δt   (A_i, Ω_i)
+    // Q_i: continuous-time PSD → discrete: Q_d = Q_c · Δt
+    //   All terms use σ² Δt (standard discretisation of white noise PSD).
     Eigen::Matrix<double, 12, 12> Qi = Eigen::Matrix<double, 12, 12>::Zero();
-    const double dt2 = dt * dt;
-    Qi.block<3, 3>(0, 0) =
-        Eigen::Matrix3d::Identity() * params_.acc_noise * params_.acc_noise * dt2;  // V_i
-    Qi.block<3, 3>(3, 3) =
-        Eigen::Matrix3d::Identity() * params_.gyr_noise * params_.gyr_noise * dt2;  // Θ_i
+    Qi.block<3, 3>(0, 0) = Eigen::Matrix3d::Identity() * params_.acc_noise * params_.acc_noise * dt;
+    Qi.block<3, 3>(3, 3) = Eigen::Matrix3d::Identity() * params_.gyr_noise * params_.gyr_noise * dt;
     Qi.block<3, 3>(6, 6) =
-        Eigen::Matrix3d::Identity() * params_.acc_bias_noise * params_.acc_bias_noise * dt;  // A_i
+        Eigen::Matrix3d::Identity() * params_.acc_bias_noise * params_.acc_bias_noise * dt;
     Qi.block<3, 3>(9, 9) =
-        Eigen::Matrix3d::Identity() * params_.gyr_bias_noise * params_.gyr_bias_noise * dt;  // Ω_i
+        Eigen::Matrix3d::Identity() * params_.gyr_bias_noise * params_.gyr_bias_noise * dt;
 
     next.P = F * state.P * F.transpose() + G * Qi * G.transpose();
     return next;
@@ -168,13 +162,19 @@ FastLioOdometry::IeskfState FastLioOdometry::propagateStep(const IeskfState& sta
 
 core::OdometryResult FastLioOdometry::estimateWithFeatures(const core::FeatureSet& features,
                                                            core::Timestamp lidar_time_start) {
-    // Cannot run update before IMU biases are initialized.
-    if (!bias_initialized_) {
-        core::OdometryResult empty;
-        empty.matched_in_map.is_converged = false;
-        empty.matched_in_odom.is_converged = false;
-        return empty;
-    }
+    auto toSec = [](const core::Timestamp& t) {
+        return std::chrono::duration<double>(t.time_since_epoch()).count();
+    };
+
+    using SteadyClock = std::chrono::steady_clock;
+    auto t_section_start = SteadyClock::now();
+    auto t_prev = t_section_start;
+    auto elapsedMs = [&t_prev]() {
+        auto now = SteadyClock::now();
+        double ms = std::chrono::duration<double, std::milli>(now - t_prev).count();
+        t_prev = now;
+        return ms;
+    };
 
     // 1. Collect IMU batch [prev_scan_time_, lidar_time_start] with interpolated endpoints.
     std::vector<core::ImuData> imu_batch;
@@ -223,12 +223,41 @@ core::OdometryResult FastLioOdometry::estimateWithFeatures(const core::FeatureSe
             imu_buf_.pop_front();
         }
     }
+    (void)elapsedMs();  // imu_batch_collect (silent)
+
+    // Guard 1: no IMU data → skip (stale lidar frame, back-to-back processing)
+    if (imu_batch.empty() && prev_scan_time_ != core::Timestamp::min()) {
+        std::clog << "[FastLIO] SKIP: no IMU data between scans (stale lidar frame?)" << std::endl;
+        prev_scan_time_ = lidar_time_start;
+        core::OdometryResult empty;
+        empty.matched_in_map.is_converged = false;
+        empty.matched_in_odom.is_converged = false;
+        return empty;
+    }
+
+    // Guard 2: time gap too large → skip (state would diverge during long open-loop IMU prop)
+    constexpr double kMaxScanGapSec = 10.0;
+    if (prev_scan_time_ != core::Timestamp::min()) {
+        const double gap = core::getDeltaSec(prev_scan_time_, lidar_time_start);
+        if (gap > kMaxScanGapSec) {
+            std::clog << "[FastLIO] SKIP: scan gap " << gap << "s" << std::endl;
+            prev_scan_time_ = lidar_time_start;
+            {
+                std::lock_guard<std::mutex> lock(committed_state_mutex_);
+                committed_state_.timestamp = lidar_time_start;
+            }
+            core::OdometryResult empty;
+            empty.matched_in_map.is_converged = false;
+            empty.matched_in_odom.is_converged = false;
+            return empty;
+        }
+    }
+
+    (void)elapsedMs();  // guards (silent)
 
     // 2. Forward propagation (IMU integration + covariance propagation)
-    // Propagates committed_state_ from prev_scan_time to lidar_time_start.
-    // TODO: replace state_ with committed_state_ once dual-state refactor is complete.
-
     IeskfState reprop_start;
+    double t_iter_ms = 0.0;
     {
         std::lock_guard<std::mutex> lock(committed_state_mutex_);
         IeskfState propagated = committed_state_;
@@ -239,15 +268,17 @@ core::OdometryResult FastLioOdometry::estimateWithFeatures(const core::FeatureSe
             }
         }
 
+        (void)elapsedMs();  // fwd_propagation (silent)
+
         // 3. iEKF iterated update with point-to-plane residuals
         committed_state_ = iteratedUpdate(propagated, features);
         reprop_start = committed_state_;
+        t_iter_ms = elapsedMs();
     }
     std::vector<core::ImuData> reprop_batch;
+    size_t reprop_count = 0;
     {
         // Lock both mutexes in the same order as feedImu (predicted → imu) to avoid deadlock.
-        // Holding both locks makes the reprop + predicted_states swap atomic:
-        // feedImu either completes before this block or waits until after.
         std::lock_guard<std::mutex> pred_lock(predicted_states_mutex_);
         std::lock_guard<std::mutex> imu_lock(imu_buf_mutex_);
 
@@ -256,12 +287,14 @@ core::OdometryResult FastLioOdometry::estimateWithFeatures(const core::FeatureSe
             if (imu.timestamp > lidar_time_start) reprop_batch.push_back(imu);
         }
 
+        // Use predictStep (no covariance) — predicted states only need pose/vel for deskew
         IeskfState reproped = reprop_start;
         std::deque<IeskfState> reproped_states;
         for (const auto& imu : reprop_batch) {
-            reproped = propagateStep(reproped, imu);
+            reproped = predictStep(reproped, imu);
             reproped_states.push_back(reproped);
         }
+        reprop_count = reprop_batch.size();
 
         // Replace predicted_states: keep only entries newer than reprop_batch coverage
         while (!predicted_states_.empty() && !reprop_batch.empty() &&
@@ -270,6 +303,13 @@ core::OdometryResult FastLioOdometry::estimateWithFeatures(const core::FeatureSe
         }
         predicted_states_.insert(predicted_states_.begin(), reproped_states.begin(),
                                  reproped_states.end());
+        const double t_reprop_ms = elapsedMs();
+
+        // Single summary line
+        std::clog << "[FastLIO] iter=" << t_iter_ms << "ms reprop=" << t_reprop_ms
+                  << "ms(n=" << reprop_count << ")"
+                  << " p=" << reprop_start.p.transpose() << " b_a=" << reprop_start.b_a.transpose()
+                  << '\n';
     }
 
     prev_scan_time_ = lidar_time_start;
@@ -307,7 +347,9 @@ core::OdometryResult FastLioOdometry::estimateWithFeatures(const core::FeatureSe
 FastLioOdometry::IeskfState FastLioOdometry::iteratedUpdate(const IeskfState& propagated,
                                                             const core::FeatureSet& features) {
     const auto cloud = features.raw_deskewed;
-    if (!cloud || cloud->empty()) return propagated;
+    if (!cloud || cloud->empty()) {
+        return propagated;
+    }
 
     // Convert propagated state to map frame; work in map frame throughout.
     IeskfState propagated_map = propagated;
@@ -321,14 +363,15 @@ FastLioOdometry::IeskfState FastLioOdometry::iteratedUpdate(const IeskfState& pr
     }
 
     IeskfState result = propagated_map;
-    const Eigen::Matrix<double, 18, 18> P_bar = propagated.P;  // propagated covariance (fixed)
+    const Eigen::Matrix<double, 15, 15> P_bar = propagated.P;  // propagated covariance (fixed)
 
-    // Saved from last valid iteration for the final P update
-    Eigen::MatrixXd K_last;
-    Eigen::MatrixXd H_last;
+    // Posterior covariance from Woodbury: (P_bar^{-1} + H^T R^{-1} H)^{-1}
+    Eigen::Matrix<double, 15, 15> P_posterior = P_bar;
     int last_valid_num = 0;
 
+    using Clock = std::chrono::steady_clock;
     for (int iter = 0; iter < params_.max_iterations; ++iter) {
+        const auto t_iter_start = Clock::now();
         const Eigen::Isometry3d T_world_lidar = [&] {
             Eigen::Isometry3d T;
             T.linear() = result.R;
@@ -344,9 +387,10 @@ FastLioOdometry::IeskfState FastLioOdometry::iteratedUpdate(const IeskfState& pr
         for (int i = 0; i < n_pts; ++i) {
             nearest_planes[i] = queryNearestPlane((*cloud)[i], T_world_lidar);
         }
+        const auto t_knn = Clock::now();
 
         // --- Assemble H, r ---
-        Eigen::MatrixXd H_raw(n_pts, 18);
+        Eigen::MatrixXd H_raw(n_pts, 15);
         Eigen::VectorXd r_raw(n_pts);
         int valid_num = 0;
         for (int i = 0; i < n_pts; ++i) {
@@ -358,6 +402,8 @@ FastLioOdometry::IeskfState FastLioOdometry::iteratedUpdate(const IeskfState& pr
             r_raw(valid_num) = res.r;
             ++valid_num;
         }
+        const auto t_assemble = Clock::now();
+        (void)t_assemble;
 
         if (valid_num < 6) break;  // under-constrained
 
@@ -365,7 +411,7 @@ FastLioOdometry::IeskfState FastLioOdometry::iteratedUpdate(const IeskfState& pr
         const auto r = r_raw.head(valid_num);
 
         // --- Prior offset: dx_prior = result ⊞⁻¹ propagated_map ---
-        Eigen::Matrix<double, 18, 1> dx_prior = Eigen::Matrix<double, 18, 1>::Zero();
+        Eigen::Matrix<double, 15, 1> dx_prior = Eigen::Matrix<double, 15, 1>::Zero();
         dx_prior.segment<3>(0) = result.p - propagated_map.p;
         dx_prior.segment<3>(3) = result.v - propagated_map.v;
         {
@@ -376,18 +422,23 @@ FastLioOdometry::IeskfState FastLioOdometry::iteratedUpdate(const IeskfState& pr
         }
         dx_prior.segment<3>(9) = result.b_a - propagated_map.b_a;
         dx_prior.segment<3>(12) = result.b_g - propagated_map.b_g;
-        // dx_prior[15:18] = 0 (gravity not estimated)
 
-        // --- Kalman gain (using propagated P_bar, NOT iteratively shrunk P) ---
-        const Eigen::MatrixXd S =
-            H * P_bar * H.transpose() +
-            params_.measurement_noise * Eigen::MatrixXd::Identity(valid_num, valid_num);
-        const Eigen::MatrixXd K = P_bar * H.transpose() * S.inverse();
-
-        // iEKF update (derived from MAP optimisation, innovation convention):
-        //   dx_total^(κ+1) = K * (r + H * dx_prior)
-        //   x̂^(κ+1) = x̄ ⊞ dx_total^(κ+1)
-        const Eigen::VectorXd dx_total = K * (r + H * dx_prior);
+        // --- Kalman gain via Woodbury identity (15×15 inverse instead of N×N) ---
+        // K = P H^T (H P H^T + R)^{-1}  ≡  (P^{-1} + H^T R^{-1} H)^{-1} H^T R^{-1}
+        // With R = σ² I:  R^{-1} = (1/σ²) I
+        const double r_inv = 1.0 / params_.measurement_noise;
+        // HtRinvH = H^T (1/σ²) H — accumulate in 15×15
+        const Eigen::Matrix<double, 15, 15> HtRinvH =
+            r_inv * (H.transpose() * H);  // 15×N · N×15 → 15×15
+        // Use LDLT for numerical stability instead of direct .inverse()
+        const Eigen::Matrix<double, 15, 15> P_bar_inv_plus_HtRinvH =
+            P_bar.ldlt().solve(Eigen::Matrix<double, 15, 15>::Identity()) + HtRinvH;
+        const Eigen::Matrix<double, 15, 15> gain_lhs = P_bar_inv_plus_HtRinvH.ldlt().solve(
+            Eigen::Matrix<double, 15, 15>::Identity());  // 15×15 inverse via LDLT
+        // z = H^T R^{-1} (r + H dx_prior) — 15×1
+        const Eigen::Matrix<double, 15, 1> z =
+            r_inv * H.transpose() * (r + H * dx_prior);  // 15×N · N×1 → 15×1
+        const Eigen::Matrix<double, 15, 1> dx_total = gain_lhs * z;
 
         result = propagated_map;  // reset to prior
         result.p += dx_total.segment<3>(0);
@@ -402,24 +453,22 @@ FastLioOdometry::IeskfState FastLioOdometry::iteratedUpdate(const IeskfState& pr
                           : Eigen::AngleAxisd(angle, dtheta / angle).toRotationMatrix();
         result.R = propagated_map.R * dR;
 
-        // Save for final P update
-        K_last = K;
-        H_last = H;
+        // Save for final P update: gain_lhs = (P_bar^{-1} + H^T R^{-1} H)^{-1}
+        // which IS the posterior covariance directly.
+        P_posterior = gain_lhs;
         last_valid_num = valid_num;
 
         // Convergence: ||dx_total − dx_prior|| = incremental change
-        if ((dx_total - dx_prior).norm() < params_.state_converge_threshold) break;
+        const double delta = (dx_total - dx_prior).norm();
+        if (delta < params_.state_converge_threshold) {
+            break;
+        }
     }
 
-    // --- Covariance update (Joseph form, done ONCE after convergence) ---
+    // --- Covariance update ---
+    // P_posterior = (P_bar^{-1} + H^T R^{-1} H)^{-1} is already the posterior covariance.
     if (last_valid_num >= 6) {
-        const Eigen::Matrix<double, 18, 18> I18 = Eigen::Matrix<double, 18, 18>::Identity();
-        const Eigen::MatrixXd IKH = I18 - K_last * H_last;
-        result.P = IKH * P_bar * IKH.transpose() +
-                   K_last *
-                       (params_.measurement_noise *
-                        Eigen::MatrixXd::Identity(last_valid_num, last_valid_num)) *
-                       K_last.transpose();
+        result.P = P_posterior;
     } else {
         result.P = P_bar;
     }
@@ -506,7 +555,7 @@ FastLioOdometry::PointResidual FastLioOdometry::buildPointResidual(
     const double dist = normal.dot(plane.point_in_map - plane.centroid);
     if (std::abs(dist) >= params_.max_point_to_plane_distance) return {};
 
-    // Jacobian: state ordering [δp(0:3), δv(3:6), δθ(6:9), δb_a(9:12), δb_g(12:15), δg(15:18)]
+    // Jacobian: state ordering [δp(0:3), δv(3:6), δθ(6:9), δb_a(9:12), δb_g(12:15)]
     // Right perturbation on R_map_body → point must be in body (base) frame
     const Eigen::Vector3d p_imu = T_imu_lidar_ * p_lidar;
     PointResidual res;
@@ -517,42 +566,6 @@ FastLioOdometry::PointResidual FastLioOdometry::buildPointResidual(
     // Innovation convention: r = z - h(x̂) = 0 - dist  (point-on-plane → z = 0)
     res.r = -dist;
     return res;
-}
-
-void FastLioOdometry::tryInitBias(const core::ImuData& imu) {
-    if (bias_initialized_) return;
-
-    static_imu_buf_.push_back(imu);
-    if (static_imu_buf_.size() < kMinStaticSamples) return;
-    if (static_imu_buf_.size() > kMaxStaticSamples) {
-        bias_initialized_ = true;  // cap reached → use what we have
-    }
-
-    if (!bias_initialized_ && static_imu_buf_.size() < kMaxStaticSamples) return;
-
-    Eigen::Vector3d mean_acc = Eigen::Vector3d::Zero();
-    Eigen::Vector3d mean_gyr = Eigen::Vector3d::Zero();
-    for (const auto& s : static_imu_buf_) {
-        mean_acc += s.acc;
-        mean_gyr += s.gyr;
-    }
-    mean_acc /= static_cast<double>(static_imu_buf_.size());
-    mean_gyr /= static_cast<double>(static_imu_buf_.size());
-
-    {
-        std::lock_guard<std::mutex> lock(committed_state_mutex_);
-        // Gyro bias = mean gyro reading (robot is static)
-        committed_state_.b_g = mean_gyr;
-        // Accel bias: mean_acc should equal R^T * g when static.
-        // Assume initial pose is level → gravity along -Z in body frame.
-        committed_state_.b_a = mean_acc - Eigen::Vector3d(0.0, 0.0, kGravity);
-        // Seed the timestamp so the first predictStep sees a valid dt.
-        committed_state_.timestamp = imu.timestamp;
-    }
-
-    bias_initialized_ = true;
-    static_imu_buf_.clear();
-    static_imu_buf_.shrink_to_fit();
 }
 
 core::NavState FastLioOdometry::getLatestState() const {
