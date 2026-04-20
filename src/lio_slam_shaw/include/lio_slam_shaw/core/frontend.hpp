@@ -1,10 +1,14 @@
 #ifndef LIO_SLAM_SHAW__CORE__FRONTEND_HPP_
 #define LIO_SLAM_SHAW__CORE__FRONTEND_HPP_
 
+#include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <mutex>
+#include <thread>
 
 #include "lio_slam_shaw/core/i_feature_extractor.hpp"
+#include "lio_slam_shaw/core/i_lio_initializer.hpp"
 #include "lio_slam_shaw/core/i_odometry_estimator.hpp"
 #include "lio_slam_shaw/core/i_scan_preprocessor.hpp"
 #include "lio_slam_shaw/core/lidar_frame.hpp"
@@ -21,8 +25,9 @@ public:
     FrontEnd(SensorDataManager::SharedPtr data_manager,
              IScanPreprocessor::SharedPtr scan_preprocessor,
              IFeatureExtractor::SharedPtr feature_extractor,
-             IOdometryEstimator::SharedPtr odometry_estimator);
-    ~FrontEnd() = default;
+             IOdometryEstimator::SharedPtr odometry_estimator,
+             ILioInitializer::SharedPtr initializer = nullptr);
+    ~FrontEnd();
 
     void feed_lidar(const LidarData& lidar);
     void feed_imu(const ImuData& imu);
@@ -40,6 +45,14 @@ private:
     IScanPreprocessor::SharedPtr scan_preprocessor_;
     IFeatureExtractor::SharedPtr feature_extractor_;
     IOdometryEstimator::SharedPtr odometry_estimator_;
+    ILioInitializer::SharedPtr initializer_;
+    std::atomic<bool> initialized_{false};
+
+    // Initialisation worker thread
+    void initThread();
+    std::thread init_thread_;
+    std::mutex init_cv_mutex_;
+    std::condition_variable init_cv_;
 
     uint64_t frame_id_counter_ = 0;
 };

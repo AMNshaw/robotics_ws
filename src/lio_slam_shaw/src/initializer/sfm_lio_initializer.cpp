@@ -1,8 +1,13 @@
 #include "lio_slam_shaw/initializer/sfm_lio_initializer.hpp"
 
+#include <pcl/filters/voxel_grid.h>
+
 #include <Eigen/SVD>
 #include <cmath>
 #include <iostream>
+#include <pcl/filters/impl/filter.hpp>
+#include <pcl/filters/impl/voxel_grid.hpp>
+#include <pcl/impl/pcl_base.hpp>
 
 namespace lio_slam_shaw::initializer {
 
@@ -50,57 +55,92 @@ void SfmLioInitializer::addImu(const core::ImuData& imu) {
 }
 
 // ===========================================================================
-// addScan — Phase 1 entry point
+// addScan — buffer only (O(1) with downsample)
 // ===========================================================================
-void SfmLioInitializer::addScan(const core::FeatureSet& features, core::Timestamp scan_time) {
+void SfmLioInitializer::addScan(const core::LidarData& lidar) {
     if (ready_) return;
-    if (!features.raw_deskewed || features.raw_deskewed->empty()) return;
+    if (!lidar.cloud || lidar.cloud->empty()) return;
+
+    // Downsample raw cloud
+    core::PointCloudIRTPtr cloud = lidar.cloud;
+    if (params_.voxel_leaf_size > 0.0f) {
+        pcl::VoxelGrid<core::PointXYZIRT> voxel;
+        voxel.setLeafSize(params_.voxel_leaf_size, params_.voxel_leaf_size,
+                          params_.voxel_leaf_size);
+        voxel.setInputCloud(lidar.cloud);
+        cloud = std::make_shared<core::PointCloudIRT>();
+        voxel.filter(*cloud);
+    }
+
+    scan_buf_.push_back({lidar.timestamp, cloud});
+    std::clog << "[SfmInit] Buffered scan " << scan_buf_.size() << " (" << cloud->size()
+              << " pts)\n";
+}
+
+// ===========================================================================
+// hasEnoughData
+// ===========================================================================
+bool SfmLioInitializer::hasEnoughData() const {
+    return !ready_ && static_cast<int>(scan_buf_.size()) >= params_.min_init_scans;
+}
+
+// ===========================================================================
+// tryInitialize — batch scan matching + linear alignment (heavy computation)
+// ===========================================================================
+bool SfmLioInitializer::tryInitialize() {
+    if (ready_) return true;
+    if (static_cast<int>(scan_buf_.size()) < params_.min_init_scans) return false;
+
+    std::clog << "[SfmInit] Running batch SFM on " << scan_buf_.size() << " scans...\n";
 
     const Eigen::Isometry3d T_lidar_imu = T_imu_lidar_.inverse();
 
-    if (frames_.empty()) {
-        // First scan: origin = identity (body frame = world frame)
-        Eigen::Isometry3d T_world_body = Eigen::Isometry3d::Identity();
+    for (size_t i = 0; i < scan_buf_.size(); ++i) {
+        const auto& [scan_time, cloud] = scan_buf_[i];
 
-        // Insert points into ikd-tree (in world = body frame for first scan)
+        core::FeatureSet features;
+        features.raw_deskewed = cloud;
+
+        if (frames_.empty()) {
+            // First scan: origin
+            Eigen::Isometry3d T_world_body = Eigen::Isometry3d::Identity();
+            const Eigen::Isometry3d T_world_lidar = T_world_body * T_lidar_imu;
+            insertScanToMap(features, T_world_lidar);
+            frames_.push_back({scan_time, T_world_body});
+            std::clog << "[SfmInit] Frame 0 — origin\n";
+            continue;
+        }
+
+        // Scan-to-map matching
+        core::NavState guess;
+        guess.timestamp = scan_time;
+        guess.pose = frames_.back().pose;
+
+        const auto match_result = scan_matcher_->match(features, guess);
+        const Eigen::Isometry3d T_world_body = match_result.pose;
+
+        // Insert into map
         const Eigen::Isometry3d T_world_lidar = T_world_body * T_lidar_imu;
         insertScanToMap(features, T_world_lidar);
 
         frames_.push_back({scan_time, T_world_body});
-        std::clog << "[SfmInit] Frame 0 — origin\n";
-        return;
+        std::clog << "[SfmInit] Frame " << frames_.size() - 1 << " — p=("
+                  << T_world_body.translation().x() << ", " << T_world_body.translation().y()
+                  << ", " << T_world_body.translation().z() << ")"
+                  << " converged=" << match_result.is_converged
+                  << " fitness=" << match_result.fitness_score << "\n";
     }
 
-    // Use previous body pose as initial guess for scan matcher
-    core::NavState guess;
-    guess.timestamp = scan_time;
-    guess.pose = frames_.back().pose;
-
-    const auto match_result = scan_matcher_->match(features, guess);
-
-    // Use matched pose as T_world_body (scan matcher returns T_world_base)
-    const Eigen::Isometry3d T_world_body = match_result.pose;
-
-    // Insert matched scan into map for future scans
-    const Eigen::Isometry3d T_world_lidar = T_world_body * T_lidar_imu;
-    insertScanToMap(features, T_world_lidar);
-
-    frames_.push_back({scan_time, T_world_body});
-    std::clog << "[SfmInit] Frame " << frames_.size() - 1 << " — p=("
-              << T_world_body.translation().x() << ", " << T_world_body.translation().y() << ", "
-              << T_world_body.translation().z() << ")"
-              << " converged=" << match_result.is_converged
-              << " fitness=" << match_result.fitness_score << "\n";
-
-    // Enough frames? → attempt linear alignment
-    if (static_cast<int>(frames_.size()) >= params_.min_init_scans) {
-        if (solveLinearAlignment()) {
-            ready_ = true;
-            std::clog << "[SfmInit] READY — g=(" << result_.gravity.x() << ", "
-                      << result_.gravity.y() << ", " << result_.gravity.z()
-                      << ") |g|=" << result_.gravity.norm() << "\n";
-        }
+    // Linear alignment
+    if (solveLinearAlignment()) {
+        ready_ = true;
+        std::clog << "[SfmInit] READY — g=(" << result_.gravity.x() << ", " << result_.gravity.y()
+                  << ", " << result_.gravity.z() << ") |g|=" << result_.gravity.norm() << "\n";
+        return true;
     }
+
+    std::clog << "[SfmInit] Linear alignment failed\n";
+    return false;
 }
 
 // ===========================================================================

@@ -9,6 +9,7 @@
 #include "lio_slam_shaw/factory/map_optimizer_factory.hpp"
 #include "lio_slam_shaw/factory/odometry_estimator_factory.hpp"
 #include "lio_slam_shaw/factory/scan_preprocessor_factory.hpp"
+#include "lio_slam_shaw/initializer/sfm_lio_initializer.hpp"
 
 namespace lio_slam_shaw::factory {
 
@@ -25,8 +26,14 @@ core::SlamProcessor::SharedPtr SlamFactory::create(rclcpp::Node* node,
     auto odometry_estimator = OdometryEstimatorFactory::create(node, extrinsics.T_base_lidar,
                                                                extrinsics.T_base_imu, map_builder);
 
-    auto frontend = std::make_shared<core::FrontEnd>(sensor_data_manager, scan_preprocessor,
-                                                     feature_extractor, odometry_estimator);
+    // LIO Initializer (SFM + IMU linear alignment)
+    const Eigen::Isometry3d T_imu_lidar = extrinsics.T_base_imu.inverse() * extrinsics.T_base_lidar;
+    auto initializer = std::make_shared<initializer::SfmLioInitializer>(
+        scan_matcher::IkdTreeScanMatcherParams{}, map_builder::IkdTreeMapBuilderParams{},
+        T_imu_lidar);
+
+    auto frontend = std::make_shared<core::FrontEnd>(
+        sensor_data_manager, scan_preprocessor, feature_extractor, odometry_estimator, initializer);
 
     auto map_optimizer = MapOptimizerFactory::create(node);
     auto loop_closure_detector = LoopClosureDetectorFactory::create(node, extrinsics.T_base_lidar);

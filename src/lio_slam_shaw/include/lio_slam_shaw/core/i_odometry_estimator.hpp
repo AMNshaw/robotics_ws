@@ -5,6 +5,7 @@
 #include <memory>
 #include <vector>
 
+#include "lio_slam_shaw/core/i_lio_initializer.hpp"
 #include "lio_slam_shaw/core/sensor_data_types.hpp"
 
 namespace lio_slam_shaw::core {
@@ -36,6 +37,10 @@ public:
 
     /// Return a chronological snapshot of predicted states (for deskewing).
     virtual std::vector<NavState> getNavStateQueueSnapshot() const = 0;
+
+    /// Apply the result from LIO initialisation (gravity, velocity, pose, biases)
+    /// to the internal state.  Called once when the initialiser becomes ready.
+    virtual void setInitialState(const LioInitResult& init_result) = 0;
 
     // Called by BackEnd after loop closure / map optimization to keep odom
     // frame consistent with the global map frame.

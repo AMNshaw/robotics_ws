@@ -632,4 +632,37 @@ void FastLioOdometry::setMapToOdomTransform(const Eigen::Isometry3d& T_map_odom)
     T_map_odom_ = T_map_odom;
 }
 
+void FastLioOdometry::setInitialState(const core::LioInitResult& init_result) {
+    {
+        std::lock_guard<std::mutex> lock(committed_state_mutex_);
+        committed_state_.timestamp = init_result.timestamp;
+        committed_state_.R = init_result.R;
+        committed_state_.p = init_result.p;
+        committed_state_.v = init_result.v;
+        committed_state_.b_a = init_result.b_a;
+        committed_state_.b_g = init_result.b_g;
+        // Reset covariance to small values
+        committed_state_.P = Eigen::Matrix<double, 15, 15>::Zero();
+        committed_state_.P.diagonal().segment<3>(0).setConstant(1e-3);   // position
+        committed_state_.P.diagonal().segment<3>(3).setConstant(1e-3);   // velocity
+        committed_state_.P.diagonal().segment<3>(6).setConstant(1e-3);   // rotation
+        committed_state_.P.diagonal().segment<3>(9).setConstant(1e-3);   // acc bias
+        committed_state_.P.diagonal().segment<3>(12).setConstant(1e-4);  // gyr bias
+    }
+    gravity_ = init_result.gravity;
+    {
+        std::lock_guard<std::mutex> lock(imu_buf_mutex_);
+        prev_scan_time_ = init_result.timestamp;
+        imu_buf_.clear();
+    }
+    {
+        std::lock_guard<std::mutex> lock(predicted_states_mutex_);
+        predicted_states_.clear();
+    }
+    std::clog << "[FastLioOdom] setInitialState: p=(" << init_result.p.x() << ", "
+              << init_result.p.y() << ", " << init_result.p.z() << ") g=("
+              << init_result.gravity.x() << ", " << init_result.gravity.y() << ", "
+              << init_result.gravity.z() << ")\n";
+}
+
 }  // namespace lio_slam_shaw::odometry_estimator

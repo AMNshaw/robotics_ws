@@ -34,15 +34,21 @@ public:
     using SharedPtr = std::shared_ptr<ILioInitializer>;
     virtual ~ILioInitializer() = default;
 
-    /// Feed a single IMU measurement.  Called from feedImu() on every sample.
+    /// Feed a single IMU measurement.  Buffer only — O(1).
     virtual void addImu(const ImuData& imu) = 0;
 
-    /// Feed a deskewed LiDAR scan (after preprocessing / downsampling).
-    /// The initialiser performs scan matching internally and buffers the result.
-    virtual void addScan(const FeatureSet& features, Timestamp scan_time) = 0;
+    /// Feed a raw LiDAR scan.  Buffer only — O(1) (no scan matching here).
+    virtual void addScan(const LidarData& lidar) = 0;
 
-    /// Returns true when enough scans have been collected and the linear
-    /// alignment has been solved successfully.
+    /// Returns true when enough scans have been buffered to attempt init.
+    virtual bool hasEnoughData() const = 0;
+
+    /// Run the full initialisation pipeline (batch scan matching + linear
+    /// alignment).  This is the heavy computation — call from a worker thread.
+    /// Returns true if initialisation succeeded.
+    virtual bool tryInitialize() = 0;
+
+    /// Returns true when tryInitialize() has succeeded.
     virtual bool isReady() const = 0;
 
     /// Retrieve the solved initial state.  Only valid when isReady() == true.

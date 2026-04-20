@@ -8,15 +8,64 @@ namespace lio_slam_shaw::core {
 FrontEnd::FrontEnd(SensorDataManager::SharedPtr data_manager,
                    IScanPreprocessor::SharedPtr scan_preprocessor,
                    IFeatureExtractor::SharedPtr feature_extractor,
-                   IOdometryEstimator::SharedPtr odometry_estimator)
+                   IOdometryEstimator::SharedPtr odometry_estimator,
+                   ILioInitializer::SharedPtr initializer)
     : data_manager_(std::move(data_manager)),
       scan_preprocessor_(std::move(scan_preprocessor)),
       feature_extractor_(std::move(feature_extractor)),
-      odometry_estimator_(std::move(odometry_estimator)) {}
+      odometry_estimator_(std::move(odometry_estimator)),
+      initializer_(std::move(initializer)),
+      initialized_(initializer_ == nullptr) {
+    if (initializer_) {
+        init_thread_ = std::thread(&FrontEnd::initThread, this);
+    }
+}
 
-void FrontEnd::feed_lidar(const LidarData& lidar) { data_manager_->addLidarData(lidar); }
+FrontEnd::~FrontEnd() {
+    // Wake init thread so it can exit
+    initialized_.store(true);
+    init_cv_.notify_all();
+    if (init_thread_.joinable()) init_thread_.join();
+}
+
+void FrontEnd::initThread() {
+    while (!initialized_.load()) {
+        std::unique_lock<std::mutex> lock(init_cv_mutex_);
+        init_cv_.wait(lock, [this] {
+            return initialized_.load() || (initializer_ && initializer_->hasEnoughData());
+        });
+
+        if (initialized_.load()) break;
+
+        lock.unlock();  // release before heavy computation
+
+        if (initializer_->tryInitialize()) {
+            auto init_result = initializer_->getResult();
+            odometry_estimator_->setInitialState(init_result);
+            initialized_.store(true);
+            std::clog << "[FrontEnd] Initialisation complete — switching to iEKF\n";
+        }
+    }
+}
+
+void FrontEnd::feed_lidar(const LidarData& lidar) {
+    if (!initialized_.load()) {
+        if (initializer_) {
+            initializer_->addScan(lidar);
+            init_cv_.notify_one();
+        }
+        return;
+    }
+    data_manager_->addLidarData(lidar);
+}
 
 void FrontEnd::feed_imu(const ImuData& imu) {
+    if (!initialized_.load()) {
+        if (initializer_) {
+            initializer_->addImu(imu);
+        }
+        return;
+    }
     data_manager_->addImuData(imu);
     odometry_estimator_->feedImu(imu);
 }
@@ -28,7 +77,10 @@ void FrontEnd::setOdomToMapTransform(const Eigen::Isometry3d& T_map_odom) {
     odometry_estimator_->setMapToOdomTransform(T_map_odom);
 }
 
-bool FrontEnd::SensorDataSynced() { return data_manager_->hasSyncedData(); }
+bool FrontEnd::SensorDataSynced() {
+    if (!initialized_.load()) return false;  // don't wake frontend thread during init
+    return data_manager_->hasSyncedData();
+}
 
 std::optional<LidarFrame::SharedPtr> FrontEnd::processPipeline() {
     std::lock_guard<std::mutex> lock(pipeline_mtx_);
@@ -41,6 +93,12 @@ std::optional<LidarFrame::SharedPtr> FrontEnd::processPipeline() {
     if (!data_manager_->getSyncedData(lidar, opt_imu_batch)) {
         return std::nullopt;
     }
+
+    // During init phase, no frames are produced
+    if (!initialized_) {
+        return std::nullopt;
+    }
+
     const auto t_sync = Clock::now();
 
     // 1. Deskew using predicted nav states from the odometry estimator

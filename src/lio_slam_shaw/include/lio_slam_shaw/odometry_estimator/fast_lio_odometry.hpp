@@ -55,6 +55,7 @@ public:
                                               core::Timestamp lidar_time_start) override;
     core::NavState getLatestState() const override;
     std::vector<core::NavState> getNavStateQueueSnapshot() const override;
+    void setInitialState(const core::LioInitResult& init_result) override;
     void setMapToOdomTransform(const Eigen::Isometry3d& T_map_odom) override;
 
 private:

@@ -151,6 +151,7 @@ add_library(factory
 target_link_libraries(factory
   core
   imu_preintegrator
+  lio_initializer
   scan_preprocessor
   feature_extractor
   scan_matcher

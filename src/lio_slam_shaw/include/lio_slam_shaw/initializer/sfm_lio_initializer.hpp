@@ -15,6 +15,9 @@ namespace lio_slam_shaw::initializer {
 struct SfmLioInitializerParams {
     int min_init_scans = 10;  // minimum scans before attempting linear alignment
 
+    // Voxel downsample leaf size for raw cloud (0 = no downsample)
+    float voxel_leaf_size = 0.5f;
+
     // IMU noise (for preintegration weighting in linear solve)
     double acc_noise = 3.9939570888117902e-03;
     double gyr_noise = 1.5636343949698187e-03;
@@ -44,7 +47,9 @@ public:
     ~SfmLioInitializer() override = default;
 
     void addImu(const core::ImuData& imu) override;
-    void addScan(const core::FeatureSet& features, core::Timestamp scan_time) override;
+    void addScan(const core::LidarData& lidar) override;
+    bool hasEnoughData() const override;
+    bool tryInitialize() override;
     bool isReady() const override;
     core::LioInitResult getResult() const override;
 
@@ -72,6 +77,13 @@ private:
     std::shared_ptr<map_builder::IkdTreeMapBuilder> map_builder_;
     std::shared_ptr<scan_matcher::IkdTreeScanMatcher> scan_matcher_;
     Eigen::Isometry3d T_imu_lidar_;
+
+    // Buffered raw scans (before scan matching)
+    struct BufferedScan {
+        core::Timestamp time;
+        core::PointCloudIRTPtr cloud;  // downsampled
+    };
+    std::vector<BufferedScan> scan_buf_;
 
     // Buffered scan frames
     struct ScanFrame {
