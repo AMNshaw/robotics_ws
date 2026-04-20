@@ -2,6 +2,7 @@
 #define LIO_SLAM_SHAW__CORE__I_LIO_INITIALIZER_HPP_
 
 #include <Eigen/Dense>
+#include <deque>
 #include <memory>
 #include <optional>
 
@@ -53,6 +54,14 @@ public:
 
     /// Retrieve the solved initial state.  Only valid when isReady() == true.
     virtual LioInitResult getResult() const = 0;
+
+    /// Drop all buffered scans (but keep IMU data).  Call after a failed
+    /// tryInitialize() to let the scan buffer refill with fresh data.
+    virtual void clearScans() = 0;
+
+    /// Read-only snapshot of the internal IMU buffer.  Used by FrontEnd for
+    /// static gravity fallback and post-init IMU replay.
+    virtual const std::deque<ImuData>& getImuBuffer() const = 0;
 };
 
 }  // namespace lio_slam_shaw::core

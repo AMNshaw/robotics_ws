@@ -14,7 +14,6 @@
 #include "lio_slam_shaw/core/backend.hpp"
 #include "lio_slam_shaw/core/frontend.hpp"
 #include "lio_slam_shaw/core/i_map_builder.hpp"
-#include "lio_slam_shaw/core/sensor_data_manager.hpp"
 #include "lio_slam_shaw/core/sensor_data_types.hpp"
 
 namespace lio_slam_shaw::core {

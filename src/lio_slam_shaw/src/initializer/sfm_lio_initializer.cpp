@@ -40,7 +40,10 @@ SfmLioInitializer::SfmLioInitializer(
     const scan_matcher::IkdTreeScanMatcherParams& scan_matcher_params,
     const map_builder::IkdTreeMapBuilderParams& map_builder_params,
     const Eigen::Isometry3d& T_imu_lidar, const SfmLioInitializerParams& params)
-    : params_(params), T_imu_lidar_(T_imu_lidar) {
+    : params_(params),
+      map_builder_params_(map_builder_params),
+      scan_matcher_params_(scan_matcher_params),
+      T_imu_lidar_(T_imu_lidar) {
     map_builder_ = std::make_shared<map_builder::IkdTreeMapBuilder>(map_builder_params);
     scan_matcher_ =
         std::make_shared<scan_matcher::IkdTreeScanMatcher>(map_builder_, scan_matcher_params);
@@ -111,10 +114,32 @@ bool SfmLioInitializer::tryInitialize() {
             continue;
         }
 
-        // Scan-to-map matching
+        // Scan-to-map matching — constant-velocity extrapolation for initial guess
         core::NavState guess;
         guess.timestamp = scan_time;
-        guess.pose = frames_.back().pose;
+
+        if (frames_.size() >= 2) {
+            // Extrapolate from last two frames
+            const auto& f0 = frames_[frames_.size() - 2];
+            const auto& f1 = frames_[frames_.size() - 1];
+            const double dt_prev = core::getDeltaSec(f0.time, f1.time);
+            const double dt_curr = core::getDeltaSec(f1.time, scan_time);
+
+            if (dt_prev > 1e-6 && dt_curr > 0.0) {
+                const double ratio = dt_curr / dt_prev;
+                const Eigen::Vector3d dp = f1.pose.translation() - f0.pose.translation();
+                // Rotation: R_guess = R1 * exp(log(R0^T R1) * ratio)
+                const Eigen::Matrix3d dR = f0.pose.rotation().transpose() * f1.pose.rotation();
+                const Eigen::AngleAxisd aa(dR);
+
+                guess.pose.linear() = f1.pose.rotation() * expSO3(aa.axis() * aa.angle() * ratio);
+                guess.pose.translation() = f1.pose.translation() + dp * ratio;
+            } else {
+                guess.pose = f1.pose;
+            }
+        } else {
+            guess.pose = frames_.back().pose;
+        }
 
         const auto match_result = scan_matcher_->match(features, guess);
         const Eigen::Isometry3d T_world_body = match_result.pose;
@@ -311,7 +336,70 @@ bool SfmLioInitializer::solveLinearAlignment() {
     // --- Refine gravity to known magnitude ---
     // Project g_solved onto the sphere of radius |g_known| = 9.80511
     constexpr double kGravityMagnitude = 9.80511;
-    const Eigen::Vector3d g_refined = g_solved.normalized() * kGravityMagnitude;
+    Eigen::Vector3d g_refined = g_solved.normalized() * kGravityMagnitude;
+
+    // --- Stage 2: 2-DOF manifold refinement (VINS-Mono §V-B) ---
+    // Parametrise gravity on the sphere:  g = g0 + B * w,
+    // where B = [b1, b2] is a 3×2 tangent-space basis at g0.
+    constexpr int kRefineIters = 4;
+    for (int refine = 0; refine < kRefineIters; ++refine) {
+        // Tangent basis: pick the axis least aligned with g_refined, cross-product twice.
+        const Eigen::Vector3d g_dir = g_refined.normalized();
+        const Eigen::Vector3d ref =
+            (std::abs(g_dir.x()) < 0.9) ? Eigen::Vector3d::UnitX() : Eigen::Vector3d::UnitY();
+        const Eigen::Vector3d b1 = (g_dir.cross(ref)).normalized();
+        const Eigen::Vector3d b2 = g_dir.cross(b1);  // already unit since both inputs are unit
+
+        // State: x = [v_0, ..., v_N, w1, w2]  →  3*(N+1) + 2
+        const int state_dim2 = 3 * (N + 1) + 2;
+        Eigen::MatrixXd A2 = Eigen::MatrixXd::Zero(n_rows, state_dim2);
+        Eigen::VectorXd b2_vec = Eigen::VectorXd::Zero(n_rows);
+
+        for (int k = 0; k < N; ++k) {
+            const int row = 6 * k;
+            const int v_k_col = 3 * k;
+            const int v_k1_col = 3 * (k + 1);
+            const int w_col = 3 * (N + 1);  // columns [w_col, w_col+1]
+
+            const Eigen::Matrix3d R_k = frames_[k].pose.rotation();
+            const Eigen::Vector3d p_k = frames_[k].pose.translation();
+            const Eigen::Vector3d p_k1 = frames_[k + 1].pose.translation();
+            const double dt_k = preints[k].dt;
+            const Eigen::Vector3d& alpha_k = preints[k].alpha;
+            const Eigen::Vector3d& beta_k = preints[k].beta;
+
+            // Position eq: -dt*v_k - 0.5*dt^2 * B * w = R_k*alpha - (p_{k+1}-p_k) + 0.5*dt^2*g0
+            A2.block<3, 3>(row, v_k_col) = -dt_k * Eigen::Matrix3d::Identity();
+            A2.block<3, 1>(row, w_col) = -0.5 * dt_k * dt_k * b1;
+            A2.block<3, 1>(row, w_col + 1) = -0.5 * dt_k * dt_k * b2;
+            b2_vec.segment<3>(row) = R_k * alpha_k - (p_k1 - p_k) + 0.5 * dt_k * dt_k * g_refined;
+
+            // Velocity eq: -v_k + v_{k+1} - dt * B * w = R_k*beta + dt*g0
+            A2.block<3, 3>(row + 3, v_k_col) = -Eigen::Matrix3d::Identity();
+            A2.block<3, 3>(row + 3, v_k1_col) = Eigen::Matrix3d::Identity();
+            A2.block<3, 1>(row + 3, w_col) = -dt_k * b1;
+            A2.block<3, 1>(row + 3, w_col + 1) = -dt_k * b2;
+            b2_vec.segment<3>(row + 3) = R_k * beta_k + dt_k * g_refined;
+        }
+
+        Eigen::JacobiSVD<Eigen::MatrixXd> svd2(A2, Eigen::ComputeThinU | Eigen::ComputeThinV);
+        const Eigen::VectorXd x2 = svd2.solve(b2_vec);
+        const double w1 = x2(3 * (N + 1));
+        const double w2 = x2(3 * (N + 1) + 1);
+
+        // Update gravity and re-project to sphere
+        g_refined = (g_refined + w1 * b1 + w2 * b2).normalized() * kGravityMagnitude;
+
+        // Update velocities for the final iteration
+        if (refine == kRefineIters - 1) {
+            for (int k = 0; k <= N; ++k) {
+                velocities[k] = x2.segment<3>(3 * k);
+            }
+        }
+
+        std::clog << "[SfmInit] Refine iter " << refine << ": dw=(" << w1 << ", " << w2
+                  << ") |g|=" << g_refined.norm() << "\n";
+    }
 
     // --- Fill result ---
     // Use the last frame's pose and time as the initial state for the iEKF
@@ -325,6 +413,18 @@ bool SfmLioInitializer::solveLinearAlignment() {
     result_.gravity = g_refined;
 
     return true;
+}
+
+// ===========================================================================
+// clearScans — drop stale scans so the buffer can refill after a failed init
+// ===========================================================================
+void SfmLioInitializer::clearScans() {
+    scan_buf_.clear();
+    frames_.clear();
+    // Reset the map so the next round starts from a blank slate
+    map_builder_ = std::make_shared<map_builder::IkdTreeMapBuilder>(map_builder_params_);
+    scan_matcher_ =
+        std::make_shared<scan_matcher::IkdTreeScanMatcher>(map_builder_, scan_matcher_params_);
 }
 
 }  // namespace lio_slam_shaw::initializer

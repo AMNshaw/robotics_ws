@@ -33,13 +33,18 @@ struct FastLioOdometryParams {
     double max_point_to_plane_distance = 0.3;  // outlier rejection threshold
 };
 
-// iEKF state vector (15-DOF on manifold):
+// iEKF state vector (17-DOF on manifold):
 //   rotation    R ∈ SO(3)   — world←body
 //   position    p ∈ R^3     — in world frame
 //   velocity    v ∈ R^3     — in world frame
 //   accel bias  b_a ∈ R^3
 //   gyro  bias  b_g ∈ R^3
-// Gravity is treated as a known constant (not estimated).
+//   gravity dir δg ∈ R^2    — tangent-space perturbation of g on S²(G)
+//
+// Error-state ordering:
+//   [δp(0:3), δv(3:6), δθ(6:9), δb_a(9:12), δb_g(12:15), δg(15:17)]
+
+static constexpr int kStateDim = 17;
 
 class FastLioOdometry : public core::IOdometryEstimator {
 public:
@@ -66,19 +71,33 @@ private:
         Eigen::Vector3d v = Eigen::Vector3d::Zero();
         Eigen::Vector3d b_g = Eigen::Vector3d::Zero();
         Eigen::Vector3d b_a = Eigen::Vector3d::Zero();
+        Eigen::Vector3d gravity{0.0, 0.0, -9.80511};  // estimated gravity in world frame
         // Bias-corrected angular velocity from the last IMU measurement (for nav output)
         Eigen::Vector3d angular_vel = Eigen::Vector3d::Zero();
 
-        // Error-state covariance (15×15)
-        // State ordering: [δp(0:3), δv(3:6), δθ(6:9), δb_a(9:12), δb_g(12:15)]
-        // Gravity is NOT in state — treated as known constant.
-        Eigen::Matrix<double, 15, 15> P = []() {
-            Eigen::Matrix<double, 15, 15> P0 = Eigen::Matrix<double, 15, 15>::Zero();
+        // Tangent basis [b1, b2] at current gravity (columns of 3×2 matrix).
+        // Updated whenever gravity changes.
+        Eigen::Matrix<double, 3, 2> gravity_basis = Eigen::Matrix<double, 3, 2>::Zero();
+
+        void updateGravityBasis() {
+            const Eigen::Vector3d g_dir = gravity.normalized();
+            const Eigen::Vector3d ref =
+                (std::abs(g_dir.x()) < 0.9) ? Eigen::Vector3d::UnitX() : Eigen::Vector3d::UnitY();
+            gravity_basis.col(0) = (g_dir.cross(ref)).normalized();
+            gravity_basis.col(1) = g_dir.cross(gravity_basis.col(0));
+        }
+
+        // Error-state covariance (17×17)
+        // [δp(0:3), δv(3:6), δθ(6:9), δb_a(9:12), δb_g(12:15), δg(15:17)]
+        Eigen::Matrix<double, kStateDim, kStateDim> P = []() {
+            Eigen::Matrix<double, kStateDim, kStateDim> P0 =
+                Eigen::Matrix<double, kStateDim, kStateDim>::Zero();
             P0.diagonal().segment<3>(0).setConstant(1e-3);   // position
             P0.diagonal().segment<3>(3).setConstant(1e-3);   // velocity
             P0.diagonal().segment<3>(6).setConstant(1e-3);   // rotation
             P0.diagonal().segment<3>(9).setConstant(1e-3);   // acc bias
             P0.diagonal().segment<3>(12).setConstant(1e-4);  // gyr bias
+            P0.diagonal().segment<2>(15).setConstant(1e-2);  // gravity direction
             return P0;
         }();
     };
@@ -92,7 +111,7 @@ private:
 
     struct PointResidual {
         bool valid = false;
-        Eigen::Matrix<double, 1, 15> H = Eigen::Matrix<double, 1, 15>::Zero();
+        Eigen::Matrix<double, 1, kStateDim> H = Eigen::Matrix<double, 1, kStateDim>::Zero();
         double r = 0.0;
     };
 
@@ -141,7 +160,7 @@ private:
     std::deque<core::ImuData> imu_buf_;
     core::Timestamp prev_scan_time_;
 
-    // Gravity vector in world frame (constant — not estimated)
+    // Gravity vector in world frame — initial value only; per-state gravity overrides this.
     static constexpr double kGravity = 9.80511;
     Eigen::Vector3d gravity_{0.0, 0.0, -kGravity};
 };

@@ -119,7 +119,6 @@ target_link_libraries(loop_closure_detector
 add_library(core
   src/core/frontend.cpp
   src/core/backend.cpp
-  src/core/sensor_data_manager.cpp
   src/core/slam_processor.cpp
 )
 target_link_libraries(core

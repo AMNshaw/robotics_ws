@@ -52,6 +52,8 @@ public:
     bool tryInitialize() override;
     bool isReady() const override;
     core::LioInitResult getResult() const override;
+    void clearScans() override;
+    const std::deque<core::ImuData>& getImuBuffer() const override { return imu_buf_; }
 
 private:
     /// Insert a scan's points into the ikd-tree map (transformed to world frame).
@@ -74,6 +76,8 @@ private:
 
     // --- State ---
     SfmLioInitializerParams params_;
+    map_builder::IkdTreeMapBuilderParams map_builder_params_;
+    scan_matcher::IkdTreeScanMatcherParams scan_matcher_params_;
     std::shared_ptr<map_builder::IkdTreeMapBuilder> map_builder_;
     std::shared_ptr<scan_matcher::IkdTreeScanMatcher> scan_matcher_;
     Eigen::Isometry3d T_imu_lidar_;

@@ -93,7 +93,7 @@ FastLioOdometry::IeskfState FastLioOdometry::predictStep(const IeskfState& state
         angle_half < 1e-10
             ? (Eigen::Matrix3d::Identity() + skew(rot_half))
             : Eigen::AngleAxisd(angle_half, rot_half / angle_half).toRotationMatrix();
-    const Eigen::Vector3d a_world = (state.R * dR_half) * acc + gravity_;
+    const Eigen::Vector3d a_world = (state.R * dR_half) * acc + state.gravity;
 
     const Eigen::Vector3d rot_full = omega * dt;
     const double angle_full = rot_full.norm();
@@ -110,6 +110,8 @@ FastLioOdometry::IeskfState FastLioOdometry::predictStep(const IeskfState& state
     predicted.p = state.p + state.v * dt + 0.5 * a_world * dt * dt;
     predicted.b_g = state.b_g;
     predicted.b_a = state.b_a;
+    predicted.gravity = state.gravity;
+    predicted.gravity_basis = state.gravity_basis;
     // Note: P is not propagated in predictStep (high-freq odom path; P updated in propagateStep)
     return predicted;
 }
@@ -124,23 +126,25 @@ FastLioOdometry::IeskfState FastLioOdometry::propagateStep(const IeskfState& sta
     const Eigen::Vector3d omega = imu.gyr - state.b_g;
     const Eigen::Vector3d acc = imu.acc - state.b_a;
 
-    // State ordering: [δp(0:3), δv(3:6), δθ(6:9), δb_a(9:12), δb_g(12:15)]
-    // Gravity is a known constant — NOT in state.
-    // F (15×15) — discrete-time linearisation (first-order Euler)
-    Eigen::Matrix<double, 15, 15> F = Eigen::Matrix<double, 15, 15>::Identity();
+    // State ordering: [δp(0:3), δv(3:6), δθ(6:9), δb_a(9:12), δb_g(12:15), δg(15:17)]
+    // F (17×17) — discrete-time linearisation (first-order Euler)
+    Eigen::Matrix<double, kStateDim, kStateDim> F =
+        Eigen::Matrix<double, kStateDim, kStateDim>::Identity();
     // δp: ṗ = v  →  δp_{k+1} += δv dt
     F.block<3, 3>(0, 3) = Eigen::Matrix3d::Identity() * dt;  // ∂δp/∂δv
-    // δv: v̇ = R(a)+g  →  δv_{k+1} += -R[a]×δθ dt − R δb_a dt
+    // δv: v̇ = R(a)+g  →  δv_{k+1} += -R[a]×δθ dt − R δb_a dt + B δg dt
     F.block<3, 3>(3, 6) = -state.R * skew(acc) * dt;  // ∂δv/∂δθ
     F.block<3, 3>(3, 9) = -state.R * dt;              // ∂δv/∂δb_a
+    F.block<3, 2>(3, 15) = state.gravity_basis * dt;  // ∂δv/∂δg (3×2)
     // δθ: Ṙ = R[ω]×  →  δθ_{k+1} = (I−[ω]×dt) δθ − δb_g dt
     F.block<3, 3>(6, 6) = Eigen::Matrix3d::Identity() - skew(omega) * dt;  // ∂δθ/∂δθ
     F.block<3, 3>(6, 12) = -Eigen::Matrix3d::Identity() * dt;              // ∂δθ/∂δb_g
-    // b_a, b_g: identity (random walk driven by Q)
+    // b_a, b_g: identity (random walk)
+    // δg: identity (carried forward, driven by process noise)
 
-    // G (15×12) — noise input matrix.
+    // G (17×12) — noise input matrix.
     // Columns: [w_acc(0:3), w_gyr(3:6), w_ba(6:9), w_bg(9:12)]
-    Eigen::Matrix<double, 15, 12> G = Eigen::Matrix<double, 15, 12>::Zero();
+    Eigen::Matrix<double, kStateDim, 12> G = Eigen::Matrix<double, kStateDim, 12>::Zero();
     G.block<3, 3>(3, 0) = -state.R;                      // δv ← acc noise (body→world)
     G.block<3, 3>(6, 3) = -Eigen::Matrix3d::Identity();  // δθ ← gyr noise
     G.block<3, 3>(9, 6) = Eigen::Matrix3d::Identity();   // δb_a ← acc_bias walk
@@ -363,10 +367,11 @@ FastLioOdometry::IeskfState FastLioOdometry::iteratedUpdate(const IeskfState& pr
     }
 
     IeskfState result = propagated_map;
-    const Eigen::Matrix<double, 15, 15> P_bar = propagated.P;  // propagated covariance (fixed)
+    const Eigen::Matrix<double, kStateDim, kStateDim> P_bar =
+        propagated.P;  // propagated covariance (fixed)
 
     // Posterior covariance from Woodbury: (P_bar^{-1} + H^T R^{-1} H)^{-1}
-    Eigen::Matrix<double, 15, 15> P_posterior = P_bar;
+    Eigen::Matrix<double, kStateDim, kStateDim> P_posterior = P_bar;
     int last_valid_num = 0;
 
     using Clock = std::chrono::steady_clock;
@@ -390,7 +395,7 @@ FastLioOdometry::IeskfState FastLioOdometry::iteratedUpdate(const IeskfState& pr
         const auto t_knn = Clock::now();
 
         // --- Assemble H, r ---
-        Eigen::MatrixXd H_raw(n_pts, 15);
+        Eigen::MatrixXd H_raw(n_pts, kStateDim);
         Eigen::VectorXd r_raw(n_pts);
         int valid_num = 0;
         for (int i = 0; i < n_pts; ++i) {
@@ -411,7 +416,7 @@ FastLioOdometry::IeskfState FastLioOdometry::iteratedUpdate(const IeskfState& pr
         const auto r = r_raw.head(valid_num);
 
         // --- Prior offset: dx_prior = result ⊞⁻¹ propagated_map ---
-        Eigen::Matrix<double, 15, 1> dx_prior = Eigen::Matrix<double, 15, 1>::Zero();
+        Eigen::Matrix<double, kStateDim, 1> dx_prior = Eigen::Matrix<double, kStateDim, 1>::Zero();
         dx_prior.segment<3>(0) = result.p - propagated_map.p;
         dx_prior.segment<3>(3) = result.v - propagated_map.v;
         {
@@ -422,29 +427,38 @@ FastLioOdometry::IeskfState FastLioOdometry::iteratedUpdate(const IeskfState& pr
         }
         dx_prior.segment<3>(9) = result.b_a - propagated_map.b_a;
         dx_prior.segment<3>(12) = result.b_g - propagated_map.b_g;
+        // δg prior: project (result.gravity - propagated_map.gravity) onto tangent basis
+        {
+            const Eigen::Vector3d dg_3d = result.gravity - propagated_map.gravity;
+            dx_prior.segment<2>(15) =
+                propagated_map.gravity_basis.transpose() * dg_3d;  // 2x3 · 3x1 → 2x1
+        }
 
-        // --- Kalman gain via Woodbury identity (15×15 inverse instead of N×N) ---
-        // K = P H^T (H P H^T + R)^{-1}  ≡  (P^{-1} + H^T R^{-1} H)^{-1} H^T R^{-1}
-        // With R = σ² I:  R^{-1} = (1/σ²) I
+        // --- Kalman gain via Woodbury identity (17×17 inverse instead of N×N) ---
         const double r_inv = 1.0 / params_.measurement_noise;
-        // HtRinvH = H^T (1/σ²) H — accumulate in 15×15
-        const Eigen::Matrix<double, 15, 15> HtRinvH =
-            r_inv * (H.transpose() * H);  // 15×N · N×15 → 15×15
-        // Use LDLT for numerical stability instead of direct .inverse()
-        const Eigen::Matrix<double, 15, 15> P_bar_inv_plus_HtRinvH =
-            P_bar.ldlt().solve(Eigen::Matrix<double, 15, 15>::Identity()) + HtRinvH;
-        const Eigen::Matrix<double, 15, 15> gain_lhs = P_bar_inv_plus_HtRinvH.ldlt().solve(
-            Eigen::Matrix<double, 15, 15>::Identity());  // 15×15 inverse via LDLT
-        // z = H^T R^{-1} (r + H dx_prior) — 15×1
-        const Eigen::Matrix<double, 15, 1> z =
-            r_inv * H.transpose() * (r + H * dx_prior);  // 15×N · N×1 → 15×1
-        const Eigen::Matrix<double, 15, 1> dx_total = gain_lhs * z;
+        const Eigen::Matrix<double, kStateDim, kStateDim> HtRinvH = r_inv * (H.transpose() * H);
+        const Eigen::Matrix<double, kStateDim, kStateDim> P_bar_inv_plus_HtRinvH =
+            P_bar.ldlt().solve(Eigen::Matrix<double, kStateDim, kStateDim>::Identity()) + HtRinvH;
+        const Eigen::Matrix<double, kStateDim, kStateDim> gain_lhs =
+            P_bar_inv_plus_HtRinvH.ldlt().solve(
+                Eigen::Matrix<double, kStateDim, kStateDim>::Identity());
+        const Eigen::Matrix<double, kStateDim, 1> z = r_inv * H.transpose() * (r + H * dx_prior);
+        const Eigen::Matrix<double, kStateDim, 1> dx_total = gain_lhs * z;
 
         result = propagated_map;  // reset to prior
         result.p += dx_total.segment<3>(0);
         result.v += dx_total.segment<3>(3);
         result.b_a += dx_total.segment<3>(9);
         result.b_g += dx_total.segment<3>(12);
+
+        // Update gravity: g = g0 + B * δg, then re-project to sphere
+        {
+            const Eigen::Vector2d dg = dx_total.segment<2>(15);
+            result.gravity =
+                (propagated_map.gravity + propagated_map.gravity_basis * dg).normalized() *
+                kGravity;
+            result.updateGravityBasis();
+        }
 
         const Eigen::Vector3d dtheta = dx_total.segment<3>(6);
         const double angle = dtheta.norm();
@@ -555,7 +569,7 @@ FastLioOdometry::PointResidual FastLioOdometry::buildPointResidual(
     const double dist = normal.dot(plane.point_in_map - plane.centroid);
     if (std::abs(dist) >= params_.max_point_to_plane_distance) return {};
 
-    // Jacobian: state ordering [δp(0:3), δv(3:6), δθ(6:9), δb_a(9:12), δb_g(12:15)]
+    // Jacobian: state ordering [δp(0:3), δv(3:6), δθ(6:9), δb_a(9:12), δb_g(12:15), δg(15:17)]
     // Right perturbation on R_map_body → point must be in body (base) frame
     const Eigen::Vector3d p_imu = T_imu_lidar_ * p_lidar;
     PointResidual res;
@@ -563,6 +577,7 @@ FastLioOdometry::PointResidual FastLioOdometry::buildPointResidual(
     res.H.setZero();
     res.H.block<1, 3>(0, 0) = normal.transpose();                              // ∂r/∂δp
     res.H.block<1, 3>(0, 6) = -normal.transpose() * R_map_body * skew(p_imu);  // ∂r/∂δθ
+    // ∂r/∂δg = 0 for point-to-plane (measurement doesn't depend on gravity directly)
     // Innovation convention: r = z - h(x̂) = 0 - dist  (point-on-plane → z = 0)
     res.r = -dist;
     return res;
@@ -641,13 +656,16 @@ void FastLioOdometry::setInitialState(const core::LioInitResult& init_result) {
         committed_state_.v = init_result.v;
         committed_state_.b_a = init_result.b_a;
         committed_state_.b_g = init_result.b_g;
+        committed_state_.gravity = init_result.gravity;
+        committed_state_.updateGravityBasis();
         // Reset covariance to small values
-        committed_state_.P = Eigen::Matrix<double, 15, 15>::Zero();
+        committed_state_.P = Eigen::Matrix<double, kStateDim, kStateDim>::Zero();
         committed_state_.P.diagonal().segment<3>(0).setConstant(1e-3);   // position
         committed_state_.P.diagonal().segment<3>(3).setConstant(1e-3);   // velocity
         committed_state_.P.diagonal().segment<3>(6).setConstant(1e-3);   // rotation
         committed_state_.P.diagonal().segment<3>(9).setConstant(1e-3);   // acc bias
         committed_state_.P.diagonal().segment<3>(12).setConstant(1e-4);  // gyr bias
+        committed_state_.P.diagonal().segment<2>(15).setConstant(1e-2);  // gravity direction
     }
     gravity_ = init_result.gravity;
     {

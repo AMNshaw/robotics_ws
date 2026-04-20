@@ -5,13 +5,11 @@
 
 namespace lio_slam_shaw::core {
 
-FrontEnd::FrontEnd(SensorDataManager::SharedPtr data_manager,
-                   IScanPreprocessor::SharedPtr scan_preprocessor,
+FrontEnd::FrontEnd(IScanPreprocessor::SharedPtr scan_preprocessor,
                    IFeatureExtractor::SharedPtr feature_extractor,
                    IOdometryEstimator::SharedPtr odometry_estimator,
                    ILioInitializer::SharedPtr initializer)
-    : data_manager_(std::move(data_manager)),
-      scan_preprocessor_(std::move(scan_preprocessor)),
+    : scan_preprocessor_(std::move(scan_preprocessor)),
       feature_extractor_(std::move(feature_extractor)),
       odometry_estimator_(std::move(odometry_estimator)),
       initializer_(std::move(initializer)),
@@ -29,22 +27,62 @@ FrontEnd::~FrontEnd() {
 }
 
 void FrontEnd::initThread() {
+    constexpr int kMaxRetries = 3;
+    int retry_count = 0;
+
     while (!initialized_.load()) {
-        std::unique_lock<std::mutex> lock(init_cv_mutex_);
-        init_cv_.wait(lock, [this] {
-            return initialized_.load() || (initializer_ && initializer_->hasEnoughData());
-        });
+        // Wait until enough scans are buffered (or shutdown)
+        {
+            std::unique_lock<std::mutex> lock(init_cv_mutex_);
+            init_cv_.wait(lock, [this] {
+                return initialized_.load() || (initializer_ && initializer_->hasEnoughData());
+            });
+        }
 
         if (initialized_.load()) break;
 
-        lock.unlock();  // release before heavy computation
-
         if (initializer_->tryInitialize()) {
-            auto init_result = initializer_->getResult();
+            const auto init_result = initializer_->getResult();
             odometry_estimator_->setInitialState(init_result);
+
+            // Replay any IMU samples buffered after the init timestamp so the
+            // iEKF has no gap between init completion and first scan.
+            for (const auto& imu : initializer_->getImuBuffer()) {
+                if (imu.timestamp > init_result.timestamp) {
+                    odometry_estimator_->feedImu(imu);
+                }
+            }
+
             initialized_.store(true);
-            std::clog << "[FrontEnd] Initialisation complete — switching to iEKF\n";
+            std::clog << "[FrontEnd] SFM init succeeded — switching to iEKF\n";
+            break;
         }
+
+        // tryInitialize() failed (degenerate scene, poor gravity estimate, etc.)
+        ++retry_count;
+        std::clog << "[FrontEnd] Init attempt " << retry_count << " failed";
+
+        if (retry_count >= kMaxRetries) {
+            // Give up on SFM — fall back to IMU static gravity alignment
+            std::clog << " — max retries reached, using static IMU fallback\n";
+            const auto init_result = staticImuFallback();
+            odometry_estimator_->setInitialState(init_result);
+
+            // Replay post-init IMU (all buffered, since static fallback uses
+            // early samples — everything after its timestamp is useful).
+            for (const auto& imu : initializer_->getImuBuffer()) {
+                if (imu.timestamp > init_result.timestamp) {
+                    odometry_estimator_->feedImu(imu);
+                }
+            }
+
+            initialized_.store(true);
+            break;
+        }
+
+        // Drop stale scans and let fresh ones accumulate before next attempt
+        std::clog << " — clearing scan buffer, re-accumulating\n";
+        initializer_->clearScans();
     }
 }
 
@@ -56,7 +94,8 @@ void FrontEnd::feed_lidar(const LidarData& lidar) {
         }
         return;
     }
-    data_manager_->addLidarData(lidar);
+    std::lock_guard<std::mutex> lock(lidar_mutex_);
+    pending_lidar_.push_back(lidar);
 }
 
 void FrontEnd::feed_imu(const ImuData& imu) {
@@ -66,11 +105,49 @@ void FrontEnd::feed_imu(const ImuData& imu) {
         }
         return;
     }
-    data_manager_->addImuData(imu);
+    last_imu_time_ = imu.timestamp;
     odometry_estimator_->feedImu(imu);
 }
 
 NavState FrontEnd::getLatestOdomState() const { return odometry_estimator_->getLatestState(); }
+
+LioInitResult FrontEnd::staticImuFallback() const {
+    LioInitResult res;  // defaults: R=I, p=0, v=0, b=0, g={0,0,-9.80511}
+
+    const auto& imu_buf = initializer_->getImuBuffer();
+    if (imu_buf.empty()) {
+        std::clog << "[FrontEnd] static fallback: no IMU data — using identity state\n";
+        return res;
+    }
+
+    // Average the first min(N, 500) accel samples (~1 s @ 500 Hz)
+    constexpr size_t kMaxSamples = 500;
+    const size_t n = std::min(imu_buf.size(), kMaxSamples);
+    Eigen::Vector3d mean_acc = Eigen::Vector3d::Zero();
+    for (size_t i = 0; i < n; ++i) mean_acc += imu_buf[i].acc;
+    mean_acc /= static_cast<double>(n);
+
+    // mean_acc ≈ -g in body frame  →  g_body = -mean_acc
+    const Eigen::Vector3d g_body = -mean_acc;
+    const double mag = g_body.norm();
+
+    if (mag < 1e-3) {
+        std::clog << "[FrontEnd] static fallback: degenerate accel mean — using identity\n";
+        return res;
+    }
+
+    constexpr double kG = 9.80511;
+    // Rotation aligning world -Z (gravity direction) with g_body
+    const Eigen::Quaterniond q =
+        Eigen::Quaterniond::FromTwoVectors(Eigen::Vector3d(0.0, 0.0, -kG), g_body);
+    res.R = q.toRotationMatrix();
+    res.gravity = g_body.normalized() * (-kG);
+    res.timestamp = imu_buf.back().timestamp;
+
+    std::clog << "[FrontEnd] static fallback: |g_body|=" << mag << " m/s² from " << n
+              << " IMU samples\n";
+    return res;
+}
 
 void FrontEnd::setOdomToMapTransform(const Eigen::Isometry3d& T_map_odom) {
     std::lock_guard<std::mutex> lock(pipeline_mtx_);
@@ -78,8 +155,9 @@ void FrontEnd::setOdomToMapTransform(const Eigen::Isometry3d& T_map_odom) {
 }
 
 bool FrontEnd::SensorDataSynced() {
-    if (!initialized_.load()) return false;  // don't wake frontend thread during init
-    return data_manager_->hasSyncedData();
+    if (!initialized_.load()) return false;
+    std::lock_guard<std::mutex> lock(lidar_mutex_);
+    return !pending_lidar_.empty() && last_imu_time_ > pending_lidar_.front().time_end;
 }
 
 std::optional<LidarFrame::SharedPtr> FrontEnd::processPipeline() {
@@ -88,15 +166,11 @@ std::optional<LidarFrame::SharedPtr> FrontEnd::processPipeline() {
     const auto t_pipe_start = Clock::now();
 
     LidarData lidar;
-    std::vector<ImuData> opt_imu_batch;  // consumed by getSyncedData but not used here
-
-    if (!data_manager_->getSyncedData(lidar, opt_imu_batch)) {
-        return std::nullopt;
-    }
-
-    // During init phase, no frames are produced
-    if (!initialized_) {
-        return std::nullopt;
+    {
+        std::lock_guard<std::mutex> llock(lidar_mutex_);
+        if (pending_lidar_.empty()) return std::nullopt;
+        lidar = std::move(pending_lidar_.front());
+        pending_lidar_.pop_front();
     }
 
     const auto t_sync = Clock::now();
