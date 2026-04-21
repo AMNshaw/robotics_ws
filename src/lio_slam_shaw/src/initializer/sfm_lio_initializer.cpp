@@ -12,6 +12,20 @@
 namespace lio_slam_shaw::initializer {
 
 // ---------------------------------------------------------------------------
+// Utility: linear interpolation of IMU between two bracketing samples
+// ---------------------------------------------------------------------------
+static core::ImuData interpolateImu(const core::ImuData& a, const core::ImuData& b,
+                                    const core::Timestamp& t) {
+    const double dt = core::getDeltaSec(a.timestamp, b.timestamp);
+    const double alpha = (dt > 0.0) ? core::getDeltaSec(a.timestamp, t) / dt : 0.0;
+    core::ImuData out;
+    out.timestamp = t;
+    out.acc = a.acc + alpha * (b.acc - a.acc);
+    out.gyr = a.gyr + alpha * (b.gyr - a.gyr);
+    return out;
+}
+
+// ---------------------------------------------------------------------------
 // Utility: skew-symmetric matrix  (needed by expSO3)
 // ---------------------------------------------------------------------------
 static Eigen::Matrix3d skew(const Eigen::Vector3d& v) {
@@ -258,13 +272,52 @@ bool SfmLioInitializer::solveLinearAlignment() {
     // Preintegrate IMU for each interval
     std::vector<PreintResult> preints(N);
     for (int k = 0; k < N; ++k) {
-        // Collect IMU samples between frames_[k].time and frames_[k+1].time
+        const auto t_start = frames_[k].time;
+        const auto t_end = frames_[k + 1].time;
+
+        // Collect IMU samples strictly inside (t_start, t_end) and interpolate at boundaries.
         std::vector<core::ImuData> batch;
+
+        // Find the first IMU sample > t_start and the last < t_end.
+        // We'll also need the bracketing samples at each boundary for interpolation.
+        const core::ImuData* before_start = nullptr;
+        const core::ImuData* after_start = nullptr;
+        const core::ImuData* before_end = nullptr;
+
+        for (size_t j = 0; j < imu_buf_.size(); ++j) {
+            if (imu_buf_[j].timestamp <= t_start) {
+                before_start = &imu_buf_[j];
+            } else if (!after_start) {
+                after_start = &imu_buf_[j];
+            }
+            if (imu_buf_[j].timestamp < t_end) {
+                before_end = &imu_buf_[j];
+            }
+        }
+
+        // Interpolate start boundary
+        if (before_start && after_start && after_start->timestamp > t_start) {
+            batch.push_back(interpolateImu(*before_start, *after_start, t_start));
+        }
+
+        // Interior samples
         for (const auto& imu : imu_buf_) {
-            if (imu.timestamp >= frames_[k].time && imu.timestamp <= frames_[k + 1].time) {
+            if (imu.timestamp > t_start && imu.timestamp < t_end) {
                 batch.push_back(imu);
             }
         }
+
+        // Interpolate end boundary
+        if (before_end && before_end->timestamp < t_end) {
+            // Find first sample >= t_end
+            for (size_t j = 0; j < imu_buf_.size(); ++j) {
+                if (imu_buf_[j].timestamp >= t_end) {
+                    batch.push_back(interpolateImu(*before_end, imu_buf_[j], t_end));
+                    break;
+                }
+            }
+        }
+
         preints[k] = preintegrateImu(batch);
         if (preints[k].dt < 1e-6) {
             std::clog << "[SfmInit] Interval " << k << " has no valid IMU data\n";
@@ -401,16 +454,23 @@ bool SfmLioInitializer::solveLinearAlignment() {
                   << ") |g|=" << g_refined.norm() << "\n";
     }
 
-    // --- Fill result ---
-    // Use the last frame's pose and time as the initial state for the iEKF
+    // --- Rotate world frame so that Z aligns with -gravity (gravity-aligned frame) ---
+    // g_refined is currently in the init world frame (= first LiDAR body frame).
+    // We want a new world frame where gravity = [0, 0, -G].
+    // R_align rotates init_world → gravity_world.
+    const Eigen::Quaterniond R_align = Eigen::Quaterniond::FromTwoVectors(
+        g_refined, Eigen::Vector3d(0.0, 0.0, -kGravityMagnitude));
+    const Eigen::Matrix3d R_gw = R_align.toRotationMatrix();
+
+    // --- Fill result (in gravity-aligned world frame) ---
     const int last = static_cast<int>(frames_.size()) - 1;
     result_.timestamp = frames_[last].time;
-    result_.R = frames_[last].pose.rotation();
-    result_.p = frames_[last].pose.translation();
-    result_.v = velocities[last];
-    result_.b_a = Eigen::Vector3d::Zero();  // not estimated during init
-    result_.b_g = Eigen::Vector3d::Zero();  // not estimated during init
-    result_.gravity = g_refined;
+    result_.R = R_gw * frames_[last].pose.rotation();
+    result_.p = R_gw * frames_[last].pose.translation();
+    result_.v = R_gw * velocities[last];
+    result_.b_a = Eigen::Vector3d::Zero();
+    result_.b_g = Eigen::Vector3d::Zero();
+    result_.gravity = Eigen::Vector3d(0.0, 0.0, -kGravityMagnitude);
 
     return true;
 }

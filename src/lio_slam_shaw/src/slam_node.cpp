@@ -188,9 +188,11 @@ void SlamNode::publishOdometry(const core::NavState& odom_state) {
     quat.z = q.z();
     quat.w = q.w();
     odom_msg.pose.pose.orientation = quat;
-    odom_msg.twist.twist.linear.x = odom_state.linear_vel.x();
-    odom_msg.twist.twist.linear.y = odom_state.linear_vel.y();
-    odom_msg.twist.twist.linear.z = odom_state.linear_vel.z();
+    // ROS convention: twist is in child_frame (body frame)
+    const Eigen::Vector3d v_body = odom_state.pose.rotation().transpose() * odom_state.linear_vel;
+    odom_msg.twist.twist.linear.x = v_body.x();
+    odom_msg.twist.twist.linear.y = v_body.y();
+    odom_msg.twist.twist.linear.z = v_body.z();
     odom_msg.twist.twist.angular.x = odom_state.angular_vel.x();
     odom_msg.twist.twist.angular.y = odom_state.angular_vel.y();
     odom_msg.twist.twist.angular.z = odom_state.angular_vel.z();
