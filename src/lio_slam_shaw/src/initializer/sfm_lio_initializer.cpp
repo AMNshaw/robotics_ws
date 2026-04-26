@@ -394,6 +394,42 @@ bool SfmLioInitializer::solveLinearAlignment() {
     // --- Stage 2: 2-DOF manifold refinement (VINS-Mono §V-B) ---
     // Parametrise gravity on the sphere:  g = g0 + B * w,
     // where B = [b1, b2] is a 3×2 tangent-space basis at g0.
+    refineGravity(frames_, preints, g_refined, velocities);
+
+    // --- Rotate world frame so that Z aligns with -gravity (gravity-aligned frame) ---
+    // g_refined is currently in the init world frame (= first LiDAR body frame).
+    // We want a new world frame where gravity = [0, 0, -G].
+    // R_align rotates init_world → gravity_world.
+    const Eigen::Quaterniond R_align = Eigen::Quaterniond::FromTwoVectors(
+        g_refined, Eigen::Vector3d(0.0, 0.0, -kGravityMagnitude));
+    const Eigen::Matrix3d R_gw = R_align.toRotationMatrix();
+
+    // --- Fill result (in gravity-aligned world frame) ---
+    const int last = static_cast<int>(frames_.size()) - 1;
+    result_.timestamp = frames_[last].time;
+    result_.R = R_gw * frames_[last].pose.rotation();
+    result_.p = R_gw * frames_[last].pose.translation();
+    result_.v = R_gw * velocities[last];
+    result_.b_a = Eigen::Vector3d::Zero();
+    result_.b_g = Eigen::Vector3d::Zero();
+    result_.gravity = Eigen::Vector3d(0.0, 0.0, -kGravityMagnitude);
+
+    return true;
+}
+
+Eigen::Vector3d SfmLioInitializer::refineGravity(
+    const std::vector<SfmLioInitializer::ScanFrame>& frames,
+    const std::vector<SfmLioInitializer::PreintResult>& preints, const Eigen::Vector3d& g_solved,
+    std::vector<Eigen::Vector3d>& velocities) {
+    const int N = static_cast<int>(frames_.size()) - 1;
+    const int state_dim = 3 * (N + 1) + 3;
+    const int n_rows = 6 * N;
+    constexpr double kGravityMagnitude = 9.80511;
+    Eigen::Vector3d g_refined = g_solved.normalized() * kGravityMagnitude;
+
+    // --- Stage 2: 2-DOF manifold refinement (VINS-Mono §V-B) ---
+    // Parametrise gravity on the sphere:  g = g0 + B * w,
+    // where B = [b1, b2] is a 3×2 tangent-space basis at g0.
     constexpr int kRefineIters = 4;
     for (int refine = 0; refine < kRefineIters; ++refine) {
         // Tangent basis: pick the axis least aligned with g_refined, cross-product twice.
@@ -453,26 +489,7 @@ bool SfmLioInitializer::solveLinearAlignment() {
         std::clog << "[SfmInit] Refine iter " << refine << ": dw=(" << w1 << ", " << w2
                   << ") |g|=" << g_refined.norm() << "\n";
     }
-
-    // --- Rotate world frame so that Z aligns with -gravity (gravity-aligned frame) ---
-    // g_refined is currently in the init world frame (= first LiDAR body frame).
-    // We want a new world frame where gravity = [0, 0, -G].
-    // R_align rotates init_world → gravity_world.
-    const Eigen::Quaterniond R_align = Eigen::Quaterniond::FromTwoVectors(
-        g_refined, Eigen::Vector3d(0.0, 0.0, -kGravityMagnitude));
-    const Eigen::Matrix3d R_gw = R_align.toRotationMatrix();
-
-    // --- Fill result (in gravity-aligned world frame) ---
-    const int last = static_cast<int>(frames_.size()) - 1;
-    result_.timestamp = frames_[last].time;
-    result_.R = R_gw * frames_[last].pose.rotation();
-    result_.p = R_gw * frames_[last].pose.translation();
-    result_.v = R_gw * velocities[last];
-    result_.b_a = Eigen::Vector3d::Zero();
-    result_.b_g = Eigen::Vector3d::Zero();
-    result_.gravity = Eigen::Vector3d(0.0, 0.0, -kGravityMagnitude);
-
-    return true;
+    return g_refined;
 }
 
 // ===========================================================================

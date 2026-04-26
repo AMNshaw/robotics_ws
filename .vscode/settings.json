@@ -36,5 +36,6 @@
     },
     "C_Cpp.clang_format_style": "file",
     "C_Cpp.clang_format_fallbackStyle": "Google",
-    "C_Cpp.formatting": "clangFormat"
+    "C_Cpp.formatting": "clangFormat",
+    "cmake.sourceDirectory": "/home/amnshaw/robotics_ws/ThirdParty/gtsam"
 }

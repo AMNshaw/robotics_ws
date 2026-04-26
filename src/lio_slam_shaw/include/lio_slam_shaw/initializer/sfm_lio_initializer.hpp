@@ -56,23 +56,37 @@ public:
     const std::deque<core::ImuData>& getImuBuffer() const override { return imu_buf_; }
 
 private:
-    /// Insert a scan's points into the ikd-tree map (transformed to world frame).
-    void insertScanToMap(const core::FeatureSet& features, const Eigen::Isometry3d& T_world_lidar);
+    struct BufferedScan {
+        core::Timestamp time;
+        core::PointCloudIRTPtr cloud;  // downsampled
+    };
 
-    // --- IMU preintegration (simplified, no covariance) ---
+    struct ScanFrame {
+        core::Timestamp time;
+        Eigen::Isometry3d pose;  // T_world_body (from scan matching)
+    };
+
     struct PreintResult {
         double dt = 0.0;
         Eigen::Vector3d alpha = Eigen::Vector3d::Zero();  // position increment (body frame)
         Eigen::Vector3d beta = Eigen::Vector3d::Zero();   // velocity increment (body frame)
         Eigen::Matrix3d delta_R = Eigen::Matrix3d::Identity();
     };
+    /// Insert a scan's points into the ikd-tree map (transformed to world frame).
+    void insertScanToMap(const core::FeatureSet& features, const Eigen::Isometry3d& T_world_lidar);
 
+    // --- IMU preintegration (simplified, no covariance) ---
     PreintResult preintegrateImu(const std::vector<core::ImuData>& imu_batch) const;
 
     // --- Linear alignment ---
     /// Solve for {v_0, v_1, ..., v_N, gravity} given N+1 poses and N preint results.
     /// Returns true if the solution is valid (gravity magnitude check).
     bool solveLinearAlignment();
+
+    Eigen::Vector3d refineGravity(const std::vector<ScanFrame>& frames,
+                                  const std::vector<PreintResult>& preints,
+                                  const Eigen::Vector3d& g_solved,
+                                  std::vector<Eigen::Vector3d>& velocities);
 
     // --- State ---
     SfmLioInitializerParams params_;
@@ -83,17 +97,11 @@ private:
     Eigen::Isometry3d T_imu_lidar_;
 
     // Buffered raw scans (before scan matching)
-    struct BufferedScan {
-        core::Timestamp time;
-        core::PointCloudIRTPtr cloud;  // downsampled
-    };
+
     std::vector<BufferedScan> scan_buf_;
 
     // Buffered scan frames
-    struct ScanFrame {
-        core::Timestamp time;
-        Eigen::Isometry3d pose;  // T_world_body (from scan matching)
-    };
+
     std::vector<ScanFrame> frames_;
 
     // IMU buffer: all IMU samples since the start
