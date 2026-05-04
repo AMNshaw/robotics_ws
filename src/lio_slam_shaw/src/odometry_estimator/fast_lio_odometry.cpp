@@ -385,64 +385,78 @@ FastLioOdometry::IeskfState FastLioOdometry::iteratedUpdate(const IeskfState& pr
         }();
         const Eigen::Vector3d t_map_lidar = T_world_lidar.translation();
 
-        // --- KNN + plane fitting (parallelised) ---
-        std::vector<NearestPlaneResult> nearest_planes(cloud->size());
-        const int n_pts = static_cast<int>(cloud->size());
-#pragma omp parallel for schedule(static)
-        for (int i = 0; i < n_pts; ++i) {
-            nearest_planes[i] = queryNearestPlane((*cloud)[i], T_world_lidar);
-        }
-        const auto t_knn = Clock::now();
-
-        // --- Assemble H, r ---
-        Eigen::MatrixXd H_raw(n_pts, kStateDim);
-        Eigen::VectorXd r_raw(n_pts);
-        int valid_num = 0;
-        for (int i = 0; i < n_pts; ++i) {
-            if (!nearest_planes[i].valid) continue;
-            const Eigen::Vector3d p_lidar((*cloud)[i].x, (*cloud)[i].y, (*cloud)[i].z);
-            const auto res = buildPointResidual(nearest_planes[i], p_lidar, t_map_lidar, result.R);
-            if (!res.valid) continue;
-            H_raw.row(valid_num) = res.H;
-            r_raw(valid_num) = res.r;
-            ++valid_num;
-        }
-        const auto t_assemble = Clock::now();
-        (void)t_assemble;
-
-        if (valid_num < 6) break;  // under-constrained
-
-        const auto H = H_raw.topRows(valid_num);
-        const auto r = r_raw.head(valid_num);
-
         // --- Prior offset: dx_prior = result ⊞⁻¹ propagated_map ---
         Eigen::Matrix<double, kStateDim, 1> dx_prior = Eigen::Matrix<double, kStateDim, 1>::Zero();
         dx_prior.segment<3>(0) = result.p - propagated_map.p;
         dx_prior.segment<3>(3) = result.v - propagated_map.v;
         {
-            // Log map: SO(3) → so(3)
             const Eigen::AngleAxisd aa(propagated_map.R.transpose() * result.R);
             dx_prior.segment<3>(6) = aa.angle() < 1e-10 ? Eigen::Vector3d::Zero()
                                                         : Eigen::Vector3d(aa.angle() * aa.axis());
         }
         dx_prior.segment<3>(9) = result.b_a - propagated_map.b_a;
         dx_prior.segment<3>(12) = result.b_g - propagated_map.b_g;
-        // δg prior: project (result.gravity - propagated_map.gravity) onto tangent basis
         {
             const Eigen::Vector3d dg_3d = result.gravity - propagated_map.gravity;
-            dx_prior.segment<2>(15) =
-                propagated_map.gravity_basis.transpose() * dg_3d;  // 2x3 · 3x1 → 2x1
+            dx_prior.segment<2>(15) = propagated_map.gravity_basis.transpose() * dg_3d;
         }
 
+        // --- KNN + buildResidual + accumulate H^T*H, H^T*r (fused, parallelised) ---
+        const int n_pts = static_cast<int>(cloud->size());
+        const int num_threads = omp_get_max_threads();
+
+        // Per-thread accumulators (cache-line padded)
+        struct alignas(64) ThreadAccum {
+            Eigen::Matrix<double, kStateDim, kStateDim> HtH =
+                Eigen::Matrix<double, kStateDim, kStateDim>::Zero();
+            Eigen::Matrix<double, kStateDim, 1> Htr = Eigen::Matrix<double, kStateDim, 1>::Zero();
+            int count = 0;
+        };
+        std::vector<ThreadAccum> accums(num_threads);
+
+#pragma omp parallel
+        {
+            const int tid = omp_get_thread_num();
+            auto& acc = accums[tid];
+#pragma omp for schedule(static)
+            for (int i = 0; i < n_pts; ++i) {
+                const auto plane = queryNearestPlane((*cloud)[i], T_world_lidar);
+                if (!plane.valid) continue;
+                const Eigen::Vector3d p_lidar((*cloud)[i].x, (*cloud)[i].y, (*cloud)[i].z);
+                const auto res = buildPointResidual(plane, p_lidar, t_map_lidar, result.R);
+                if (!res.valid) continue;
+                // rank-1 accumulation: H_i is 1×17
+                acc.HtH.noalias() += res.H.transpose() * res.H;
+                acc.Htr.noalias() += res.H.transpose() * res.r;
+                ++acc.count;
+            }
+        }
+
+        // Reduce across threads
+        Eigen::Matrix<double, kStateDim, kStateDim> HtH =
+            Eigen::Matrix<double, kStateDim, kStateDim>::Zero();
+        Eigen::Matrix<double, kStateDim, 1> Htr = Eigen::Matrix<double, kStateDim, 1>::Zero();
+        int valid_num = 0;
+        for (int t = 0; t < num_threads; ++t) {
+            HtH.noalias() += accums[t].HtH;
+            Htr.noalias() += accums[t].Htr;
+            valid_num += accums[t].count;
+        }
+        const auto t_knn = Clock::now();
+        (void)t_knn;
+
+        if (valid_num < 6) break;  // under-constrained
+
         // --- Kalman gain via Woodbury identity (17×17 inverse instead of N×N) ---
+        // z = r_inv * H^T * (r + H * dx_prior) = r_inv * (Htr + HtH * dx_prior)
         const double r_inv = 1.0 / params_.measurement_noise;
-        const Eigen::Matrix<double, kStateDim, kStateDim> HtRinvH = r_inv * (H.transpose() * H);
+        const Eigen::Matrix<double, kStateDim, kStateDim> HtRinvH = r_inv * HtH;
         const Eigen::Matrix<double, kStateDim, kStateDim> P_bar_inv_plus_HtRinvH =
             P_bar.ldlt().solve(Eigen::Matrix<double, kStateDim, kStateDim>::Identity()) + HtRinvH;
         const Eigen::Matrix<double, kStateDim, kStateDim> gain_lhs =
             P_bar_inv_plus_HtRinvH.ldlt().solve(
                 Eigen::Matrix<double, kStateDim, kStateDim>::Identity());
-        const Eigen::Matrix<double, kStateDim, 1> z = r_inv * H.transpose() * (r + H * dx_prior);
+        const Eigen::Matrix<double, kStateDim, 1> z = r_inv * (Htr + HtH * dx_prior);
         const Eigen::Matrix<double, kStateDim, 1> dx_total = gain_lhs * z;
 
         result = propagated_map;  // reset to prior
