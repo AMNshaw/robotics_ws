@@ -55,12 +55,7 @@ public:
     void clearScans() override;
     const std::deque<core::ImuData>& getImuBuffer() const override { return imu_buf_; }
 
-private:
-    struct BufferedScan {
-        core::Timestamp time;
-        core::PointCloudIRTPtr cloud;  // downsampled
-    };
-
+    // Public data types (pure POD, no encapsulation concern)
     struct ScanFrame {
         core::Timestamp time;
         Eigen::Isometry3d pose;  // T_world_body (from scan matching)
@@ -71,6 +66,12 @@ private:
         Eigen::Vector3d alpha = Eigen::Vector3d::Zero();  // position increment (body frame)
         Eigen::Vector3d beta = Eigen::Vector3d::Zero();   // velocity increment (body frame)
         Eigen::Matrix3d delta_R = Eigen::Matrix3d::Identity();
+    };
+
+private:
+    struct BufferedScan {
+        core::Timestamp time;
+        core::PointCloudIRTPtr cloud;  // downsampled
     };
     /// Insert a scan's points into the ikd-tree map (transformed to world frame).
     void insertScanToMap(const core::FeatureSet& features, const Eigen::Isometry3d& T_world_lidar);
@@ -110,6 +111,9 @@ private:
     // Result
     bool ready_ = false;
     core::LioInitResult result_;
+
+    // Allow unit tests to directly inject frames_/imu_buf_ and call solveLinearAlignment()
+    friend class SfmLioInitializerTest;
 };
 
 }  // namespace lio_slam_shaw::initializer
