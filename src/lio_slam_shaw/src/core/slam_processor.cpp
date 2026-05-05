@@ -63,7 +63,17 @@ void SlamProcessor::frontendThread() {
 
             if (!lidar_frame_opt.has_value()) continue;
             auto lidar_frame = lidar_frame_opt.value();
+            auto t_map_start = std::chrono::steady_clock::now();
             keyframe_to_push = map_builder_->addFrame(lidar_frame);
+            auto t_map_end = std::chrono::steady_clock::now();
+            double map_ms =
+                std::chrono::duration<double, std::milli>(t_map_end - t_map_start).count();
+            if (map_ms > 50.0)
+                std::clog << "[MapUpdate] addFrame took " << map_ms << " ms (cloud="
+                          << (lidar_frame->features.raw_deskewed
+                                  ? lidar_frame->features.raw_deskewed->size()
+                                  : 0)
+                          << ")\n";
 
             {
                 std::lock_guard<std::mutex> viz_lock(viz_mutex_);

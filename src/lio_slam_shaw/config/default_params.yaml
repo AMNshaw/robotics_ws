@@ -23,15 +23,15 @@
         acc_bias_noise: 6.4356659353532566e-05
         gyr_bias_noise: 3.5640318696367613e-05
         # iEKF parameters
-        measurement_noise: 0.1
+        measurement_noise: 0.01
         max_iterations: 5
         state_converge_threshold: 1e-3
         # Point-to-plane matching
         num_nearest_neighbors: 5
         min_plane_points: 3
-        search_radius: 0.5
+        search_radius: 1.0
         min_plane_eigenvalue_ratio: 0.1
-        max_point_to_plane_distance: 0.3
+        max_point_to_plane_distance: 0.5
 
       scan_preprocessor:
         type: "deskew"
@@ -62,4 +62,25 @@
           max_search_dist: 2.0
           plane_valid_threshold: 0.1
 
-        
+      initializer:
+        sfm:
+          min_init_scans: 10
+          voxel_leaf_size: 0.5
+          acc_noise: 3.9939570888238808e-03
+          gyr_noise: 1.5636343949698187e-03
+        scan_matcher:
+          k_neighbors: 5
+          max_iterations: 30
+          convergence_threshold: 1e-5
+          min_valid_points: 50
+          degenerate_threshold: 100.0
+          max_search_dist: 2.0
+          min_plane_points: 5
+          plane_valid_threshold: 0.1
+          rot_regularization_sigma: 0.0
+        map_builder:
+          keyframe_distance_threshold: 1.0
+          keyframe_angle_threshold: 0.2
+          ikd_delete_param: 0.5
+          ikd_balance_param: 0.6
+          ikd_downsample_size: 0.3

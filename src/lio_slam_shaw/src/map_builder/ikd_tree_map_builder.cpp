@@ -93,7 +93,13 @@ void IkdTreeMapBuilder::addKeyFrame(const core::Keyframe::SharedPtr& keyframe) {
         pt.z = static_cast<float>(pw.z());
         points_world.push_back(pt);
     }
-    ikd_tree_->Add_Points(points_world, true);
+
+    if (is_first_frame_) {
+        ikd_tree_->Build(points_world);
+        is_first_frame_ = false;
+    } else {
+        ikd_tree_->Add_Points(points_world, true);
+    }
 
     {
         std::unique_lock<std::shared_mutex> lock(keyframe_mutex_);
@@ -120,19 +126,36 @@ bool IkdTreeMapBuilder::searchKNearestPoints(const core::PointXYZIRT& query_pt, 
                                              std::vector<float>& out_distances) const {
     if (!ikd_tree_) return false;
 
-    // ikd_tree's Nearest_Search internally swap()s both output vectors,
-    // destroying any pre-allocated capacity. Use throwaway thread_local
-    // buffers so the swap cost stays inside this function and does not
-    // propagate to callers.
+    // Use thread_local PointVector (Eigen-aligned) to interface with ikd-tree.
+    // Nearest_Search now reuses capacity via resize() — no allocation after warmup.
     thread_local KD_TREE<core::PointXYZIRT>::PointVector tls_neighbors;
     thread_local std::vector<float> tls_distances;
 
     const_cast<KD_TREE<core::PointXYZIRT>*>(ikd_tree_.get())
         ->Nearest_Search(query_pt, k, tls_neighbors, tls_distances, search_dist);
 
+    // Single copy (PointVector with Eigen allocator → std::vector)
     out_neighbors.assign(tls_neighbors.begin(), tls_neighbors.end());
     out_distances.assign(tls_distances.begin(), tls_distances.end());
 
+    return true;
+}
+
+bool IkdTreeMapBuilder::searchKNearestPointsDirect(const core::PointXYZIRT& query_pt, int k,
+                                                   float search_dist,
+                                                   const PointVector*& out_neighbors,
+                                                   const std::vector<float>*& out_distances) const {
+    if (!ikd_tree_) return false;
+
+    // Thread-local buffers reused across calls (no allocation after warmup).
+    thread_local PointVector tls_neighbors;
+    thread_local std::vector<float> tls_distances;
+
+    const_cast<KD_TREE<core::PointXYZIRT>*>(ikd_tree_.get())
+        ->Nearest_Search(query_pt, k, tls_neighbors, tls_distances, search_dist);
+
+    out_neighbors = &tls_neighbors;
+    out_distances = &tls_distances;
     return true;
 }
 

@@ -239,6 +239,19 @@ core::OdometryResult FastLioOdometry::estimateWithFeatures(const core::FeatureSe
         return empty;
     }
 
+    // Log large IMU batches (e.g. after init or frame drop) — but do NOT trim.
+    // Trimming the front creates a time gap between committed_state_.timestamp and
+    // the first remaining sample, turning the first propagateStep into a single
+    // giant dt that catastrophically corrupts position/velocity.  Integrating all
+    // samples (each with small dt ≈ 5 ms) is cheap and preserves accuracy.
+    if (imu_batch.size() > 200) {
+        std::clog << "[FastLIO] Large IMU batch: " << imu_batch.size() << " samples ("
+                  << (imu_batch.empty() ? 0.0
+                                        : core::getDeltaSec(imu_batch.front().timestamp,
+                                                            imu_batch.back().timestamp))
+                  << "s)\n";
+    }
+
     // Guard 2: time gap too large → skip (state would diverge during long open-loop IMU prop)
     constexpr double kMaxScanGapSec = 10.0;
     if (prev_scan_time_ != core::Timestamp::min()) {
@@ -355,6 +368,13 @@ FastLioOdometry::IeskfState FastLioOdometry::iteratedUpdate(const IeskfState& pr
         return propagated;
     }
 
+    // Skip scan matching when the map is empty (first frame after init).
+    // Querying an unbuilt ikd-tree returns garbage results that corrupt the state.
+    if (!map_builder_->isMapReady()) {
+        std::clog << "[FastLIO] Map not ready — skipping iEKF update (first frame)\n";
+        return propagated;
+    }
+
     // Convert propagated state to map frame; work in map frame throughout.
     IeskfState propagated_map = propagated;
     {
@@ -411,6 +431,7 @@ FastLioOdometry::IeskfState FastLioOdometry::iteratedUpdate(const IeskfState& pr
                 Eigen::Matrix<double, kStateDim, kStateDim>::Zero();
             Eigen::Matrix<double, kStateDim, 1> Htr = Eigen::Matrix<double, kStateDim, 1>::Zero();
             int count = 0;
+            double sum_r2 = 0.0;  // for diagnostics: RMS residual
         };
         std::vector<ThreadAccum> accums(num_threads);
 
@@ -428,6 +449,7 @@ FastLioOdometry::IeskfState FastLioOdometry::iteratedUpdate(const IeskfState& pr
                 // rank-1 accumulation: H_i is 1×17
                 acc.HtH.noalias() += res.H.transpose() * res.H;
                 acc.Htr.noalias() += res.H.transpose() * res.r;
+                acc.sum_r2 += res.r * res.r;
                 ++acc.count;
             }
         }
@@ -437,11 +459,14 @@ FastLioOdometry::IeskfState FastLioOdometry::iteratedUpdate(const IeskfState& pr
             Eigen::Matrix<double, kStateDim, kStateDim>::Zero();
         Eigen::Matrix<double, kStateDim, 1> Htr = Eigen::Matrix<double, kStateDim, 1>::Zero();
         int valid_num = 0;
+        double sum_r2 = 0.0;
         for (int t = 0; t < num_threads; ++t) {
             HtH.noalias() += accums[t].HtH;
             Htr.noalias() += accums[t].Htr;
             valid_num += accums[t].count;
+            sum_r2 += accums[t].sum_r2;
         }
+        const double rms_residual = valid_num > 0 ? std::sqrt(sum_r2 / valid_num) : 0.0;
         const auto t_knn = Clock::now();
         (void)t_knn;
 
@@ -464,6 +489,15 @@ FastLioOdometry::IeskfState FastLioOdometry::iteratedUpdate(const IeskfState& pr
         result.v += dx_total.segment<3>(3);
         result.b_a += dx_total.segment<3>(9);
         result.b_g += dx_total.segment<3>(12);
+
+        // Clamp bias magnitudes to physically reasonable bounds.
+        // MEMS acc bias is typically <0.1 m/s²; unconstrained estimation can
+        // produce wildly wrong values when the map is still sparse (first few
+        // frames) or when the motion profile doesn't fully excite bias.
+        constexpr double kMaxAccBias = 0.1;   // m/s²
+        constexpr double kMaxGyrBias = 0.05;  // rad/s
+        result.b_a = result.b_a.cwiseMax(-kMaxAccBias).cwiseMin(kMaxAccBias);
+        result.b_g = result.b_g.cwiseMax(-kMaxGyrBias).cwiseMin(kMaxGyrBias);
 
         // Update gravity: g = g0 + B * δg, then re-project to sphere
         {
@@ -488,6 +522,13 @@ FastLioOdometry::IeskfState FastLioOdometry::iteratedUpdate(const IeskfState& pr
 
         // Convergence: ||dx_total − dx_prior|| = incremental change
         const double delta = (dx_total - dx_prior).norm();
+        if (iter == 0 || delta < params_.state_converge_threshold) {
+            // Log first-iteration diagnostics: residual quality and correction magnitude
+            std::clog << "[iEKF] it=" << iter << " valid=" << valid_num << "/" << n_pts
+                      << " rms_r=" << rms_residual << " dp=" << dx_total.segment<3>(0).norm()
+                      << " dv=" << dx_total.segment<3>(3).norm()
+                      << " dba=" << dx_total.segment<3>(9).norm() << '\n';
+        }
         if (delta < params_.state_converge_threshold) {
             break;
         }
@@ -527,23 +568,53 @@ FastLioOdometry::NearestPlaneResult FastLioOdometry::queryNearestPlane(
     q.z = static_cast<float>(R(2, 0) * pt_lidar.x + R(2, 1) * pt_lidar.y + R(2, 2) * pt_lidar.z +
                              t.z());
 
-    thread_local std::vector<core::PointXYZIRT> neighbors;
-    thread_local std::vector<float> distances;
-    neighbors.clear();
-    distances.clear();
+    // Zero-copy KNN: get pointers to thread_local buffers inside map_builder
+    const map_builder::IkdTreeMapBuilder::PointVector* neighbors_ptr = nullptr;
+    const std::vector<float>* distances_ptr = nullptr;
 
-    if (!map_builder_->searchKNearestPoints(q, params_.num_nearest_neighbors, params_.search_radius,
-                                            neighbors, distances)) {
+    if (!map_builder_->searchKNearestPointsDirect(q, params_.num_nearest_neighbors,
+                                                  params_.search_radius, neighbors_ptr,
+                                                  distances_ptr)) {
         return {false, {}, {}, {}};
     }
-    if (static_cast<int>(neighbors.size()) < params_.min_plane_points) {
+    if (static_cast<int>(neighbors_ptr->size()) < params_.min_plane_points) {
         return {false, {}, {}, {}};
     }
-    return fitPlane(neighbors, Eigen::Vector3d(q.x, q.y, q.z));
+    return fitPlaneDirect(*neighbors_ptr, Eigen::Vector3d(q.x, q.y, q.z));
 }
 
 FastLioOdometry::NearestPlaneResult FastLioOdometry::fitPlane(
     const std::vector<lio_slam_shaw::core::PointXYZIRT>& neighbors,
+    const Eigen::Vector3d& query_point_in_map) const {
+    Eigen::Vector3d centroid = Eigen::Vector3d::Zero();
+    for (const auto& p : neighbors) centroid += Eigen::Vector3d(p.x, p.y, p.z);
+    centroid /= static_cast<double>(neighbors.size());
+
+    Eigen::Matrix3d cov = Eigen::Matrix3d::Zero();
+    for (const auto& p : neighbors) {
+        Eigen::Vector3d dp = Eigen::Vector3d(p.x, p.y, p.z) - centroid;
+        cov += dp * dp.transpose();
+    }
+
+    Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> solver(cov);
+    const auto& eigenvalues = solver.eigenvalues();
+
+    if (eigenvalues(0) > params_.min_plane_eigenvalue_ratio * eigenvalues(2)) {
+        return {false, {}, {}, {}};
+    }
+
+    Eigen::Vector3d normal = solver.eigenvectors().col(0);
+
+    return NearestPlaneResult{
+        /*valid=*/true,
+        /*point_in_map=*/query_point_in_map,
+        /*normal=*/normal,
+        /*centroid=*/centroid,
+    };
+}
+
+FastLioOdometry::NearestPlaneResult FastLioOdometry::fitPlaneDirect(
+    const map_builder::IkdTreeMapBuilder::PointVector& neighbors,
     const Eigen::Vector3d& query_point_in_map) const {
     Eigen::Vector3d centroid = Eigen::Vector3d::Zero();
     for (const auto& p : neighbors) centroid += Eigen::Vector3d(p.x, p.y, p.z);
@@ -677,7 +748,7 @@ void FastLioOdometry::setInitialState(const core::LioInitResult& init_result) {
         committed_state_.P.diagonal().segment<3>(0).setConstant(1e-3);   // position
         committed_state_.P.diagonal().segment<3>(3).setConstant(1e-3);   // velocity
         committed_state_.P.diagonal().segment<3>(6).setConstant(1e-3);   // rotation
-        committed_state_.P.diagonal().segment<3>(9).setConstant(1e-3);   // acc bias
+        committed_state_.P.diagonal().segment<3>(9).setConstant(1e-5);   // acc bias
         committed_state_.P.diagonal().segment<3>(12).setConstant(1e-4);  // gyr bias
         committed_state_.P.diagonal().segment<2>(15).setConstant(1e-2);  // gravity direction
     }

@@ -35,6 +35,16 @@ public:
                               std::vector<core::PointXYZIRT>& out_neighbors,
                               std::vector<float>& out_distances) const override;
 
+    /// Returns true once the ikd-tree has been built (at least one frame added).
+    bool isMapReady() const { return !is_first_frame_; }
+
+    /// Zero-copy KNN: returns reference to thread_local buffer (valid until next call on same
+    /// thread)
+    using PointVector = KD_TREE<core::PointXYZIRT>::PointVector;
+    bool searchKNearestPointsDirect(const core::PointXYZIRT& query_pt, int k, float search_dist,
+                                    const PointVector*& out_neighbors,
+                                    const std::vector<float>*& out_distances) const;
+
     void updateKeyframePoses(
         const std::vector<std::pair<uint64_t, Eigen::Isometry3d>>& id_pose_pairs) override;
 

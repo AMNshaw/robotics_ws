@@ -169,8 +169,17 @@ std::optional<LidarFrame::SharedPtr> FrontEnd::processPipeline() {
     {
         std::lock_guard<std::mutex> llock(lidar_mutex_);
         if (pending_lidar_.empty()) return std::nullopt;
-        lidar = std::move(pending_lidar_.front());
-        pending_lidar_.pop_front();
+
+        // If falling behind significantly, drop stale frames — keep the latest
+        if (pending_lidar_.size() > 5) {
+            const size_t dropped = pending_lidar_.size() - 1;
+            lidar = std::move(pending_lidar_.back());
+            pending_lidar_.clear();
+            std::clog << "[FrontEnd] Dropped " << dropped << " stale frames to stay real-time\n";
+        } else {
+            lidar = std::move(pending_lidar_.front());
+            pending_lidar_.pop_front();
+        }
     }
 
     const auto t_sync = Clock::now();
@@ -195,7 +204,13 @@ std::optional<LidarFrame::SharedPtr> FrontEnd::processPipeline() {
               << " deskew=" << ms(t_sync, t_deskew) << " extract=" << ms(t_deskew, t_extract)
               << " odom=" << ms(t_extract, t_odom) << " total=" << ms(t_pipe_start, t_odom)
               << " | cloud=" << lidar.cloud->size()
-              << " converged=" << odom_result.matched_in_map.is_converged << '\n';
+              << " processed=" << (features.raw_deskewed ? features.raw_deskewed->size() : 0)
+              << " converged=" << odom_result.matched_in_map.is_converged;
+    {
+        std::lock_guard<std::mutex> llock(lidar_mutex_);
+        std::clog << " q=" << pending_lidar_.size();
+    }
+    std::clog << '\n';
 
     if (!odom_result.matched_in_map.is_converged) {
         return std::nullopt;

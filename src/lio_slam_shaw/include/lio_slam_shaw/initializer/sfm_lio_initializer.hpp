@@ -70,14 +70,21 @@ public:
 
 private:
     struct BufferedScan {
-        core::Timestamp time;
+        core::Timestamp time;          // scan reference timestamp
         core::PointCloudIRTPtr cloud;  // downsampled
     };
     /// Insert a scan's points into the ikd-tree map (transformed to world frame).
     void insertScanToMap(const core::FeatureSet& features, const Eigen::Isometry3d& T_world_lidar);
 
     // --- IMU preintegration (simplified, no covariance) ---
-    PreintResult preintegrateImu(const std::vector<core::ImuData>& imu_batch) const;
+    /// Integrate IMU batch with an optional gyro-bias correction (subtracted from raw gyr).
+    PreintResult preintegrateImu(const std::vector<core::ImuData>& imu_batch,
+                                 const Eigen::Vector3d& b_g = Eigen::Vector3d::Zero()) const;
+
+    // --- Gyro bias estimation from rotation residuals ---
+    /// Given scan-match relative rotations and raw preint results (b_g=0),
+    /// solve for b_g via least-squares: dt * b_g ≈ Log(R_scan^T * R_imu)
+    Eigen::Vector3d estimateGyroBias(const std::vector<PreintResult>& preints) const;
 
     // --- Linear alignment ---
     /// Solve for {v_0, v_1, ..., v_N, gravity} given N+1 poses and N preint results.

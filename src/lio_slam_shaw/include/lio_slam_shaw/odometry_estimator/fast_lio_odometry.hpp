@@ -18,7 +18,7 @@ struct FastLioOdometryParams {
     double gyr_noise = 1.5636343949698187e-03;
     double acc_bias_noise = 6.4356659353532566e-05;
     double gyr_bias_noise = 3.5640318696367613e-05;
-    double measurement_noise = 0.1;  // point-to-plane residual noise (for covariance computation)
+    double measurement_noise = 0.01;  // point-to-plane residual noise (for covariance computation)
 
     // iEKF solver
     int max_iterations = 5;
@@ -28,9 +28,9 @@ struct FastLioOdometryParams {
     int num_nearest_neighbors = 5;
     int min_plane_points = 3;
     double plane_valid_threshold = 0.1;  // max eigenvalue ratio for valid
-    float search_radius = 0.5f;
+    float search_radius = 1.0f;
     double min_plane_eigenvalue_ratio = 0.1;   // planarity check
-    double max_point_to_plane_distance = 0.3;  // outlier rejection threshold
+    double max_point_to_plane_distance = 0.5;  // outlier rejection threshold
 };
 
 // iEKF state vector (17-DOF on manifold):
@@ -95,7 +95,7 @@ private:
             P0.diagonal().segment<3>(0).setConstant(1e-3);   // position
             P0.diagonal().segment<3>(3).setConstant(1e-3);   // velocity
             P0.diagonal().segment<3>(6).setConstant(1e-3);   // rotation
-            P0.diagonal().segment<3>(9).setConstant(1e-3);   // acc bias
+            P0.diagonal().segment<3>(9).setConstant(1e-5);   // acc bias
             P0.diagonal().segment<3>(12).setConstant(1e-4);  // gyr bias
             P0.diagonal().segment<2>(15).setConstant(1e-2);  // gravity direction
             return P0;
@@ -129,6 +129,9 @@ private:
                               const core::FeatureSet& features);  // NOLINT
     NearestPlaneResult fitPlane(const std::vector<lio_slam_shaw::core::PointXYZIRT>& neighbors,
                                 const Eigen::Vector3d& query_point_in_map) const;
+
+    NearestPlaneResult fitPlaneDirect(const map_builder::IkdTreeMapBuilder::PointVector& neighbors,
+                                      const Eigen::Vector3d& query_point_in_map) const;
 
     // Transform pt_lidar to the map frame using T_world_lidar, search K nearest neighbours in the
     // ikd-tree, and fit a plane.  Thread-safe (uses thread_local buffers internally).

@@ -61,6 +61,7 @@ SfmLioInitializer::SfmLioInitializer(
     map_builder_ = std::make_shared<map_builder::IkdTreeMapBuilder>(map_builder_params);
     scan_matcher_ =
         std::make_shared<scan_matcher::IkdTreeScanMatcher>(map_builder_, scan_matcher_params);
+    scan_matcher_->setLidarExtrinsics(T_imu_lidar_);
 }
 
 // ===========================================================================
@@ -110,18 +111,17 @@ bool SfmLioInitializer::tryInitialize() {
 
     std::clog << "[SfmInit] Running batch SFM on " << scan_buf_.size() << " scans...\n";
 
-    const Eigen::Isometry3d T_lidar_imu = T_imu_lidar_.inverse();
-
     for (size_t i = 0; i < scan_buf_.size(); ++i) {
-        const auto& [scan_time, cloud] = scan_buf_[i];
+        const auto& buf = scan_buf_[i];
+        const auto& scan_time = buf.time;
 
         core::FeatureSet features;
-        features.raw_deskewed = cloud;
+        features.raw_deskewed = buf.cloud;
 
         if (frames_.empty()) {
             // First scan: origin
             Eigen::Isometry3d T_world_body = Eigen::Isometry3d::Identity();
-            const Eigen::Isometry3d T_world_lidar = T_world_body * T_lidar_imu;
+            const Eigen::Isometry3d T_world_lidar = T_world_body * T_imu_lidar_;
             insertScanToMap(features, T_world_lidar);
             frames_.push_back({scan_time, T_world_body});
             std::clog << "[SfmInit] Frame 0 — origin\n";
@@ -159,7 +159,7 @@ bool SfmLioInitializer::tryInitialize() {
         const Eigen::Isometry3d T_world_body = match_result.pose;
 
         // Insert into map
-        const Eigen::Isometry3d T_world_lidar = T_world_body * T_lidar_imu;
+        const Eigen::Isometry3d T_world_lidar = T_world_body * T_imu_lidar_;
         insertScanToMap(features, T_world_lidar);
 
         frames_.push_back({scan_time, T_world_body});
@@ -212,7 +212,7 @@ void SfmLioInitializer::insertScanToMap(const core::FeatureSet& features,
 // preintegrateImu — simple Euler integration (no bias correction during init)
 // ===========================================================================
 SfmLioInitializer::PreintResult SfmLioInitializer::preintegrateImu(
-    const std::vector<core::ImuData>& imu_batch) const {
+    const std::vector<core::ImuData>& imu_batch, const Eigen::Vector3d& b_g) const {
     PreintResult result;
     if (imu_batch.size() < 2) return result;
 
@@ -220,9 +220,9 @@ SfmLioInitializer::PreintResult SfmLioInitializer::preintegrateImu(
         const double dt = core::getDeltaSec(imu_batch[i].timestamp, imu_batch[i + 1].timestamp);
         if (dt <= 0.0 || dt > 0.1) continue;  // skip bad intervals
 
-        // Mid-point values (use raw, no bias subtraction during init)
+        // Mid-point values with gyro bias correction
         const Eigen::Vector3d acc = 0.5 * (imu_batch[i].acc + imu_batch[i + 1].acc);
-        const Eigen::Vector3d gyr = 0.5 * (imu_batch[i].gyr + imu_batch[i + 1].gyr);
+        const Eigen::Vector3d gyr = 0.5 * (imu_batch[i].gyr + imu_batch[i + 1].gyr) - b_g;
 
         // Integrate rotation (body frame)
         const Eigen::Matrix3d dR = expSO3(gyr * dt);
@@ -234,6 +234,59 @@ SfmLioInitializer::PreintResult SfmLioInitializer::preintegrateImu(
         result.dt += dt;
     }
     return result;
+}
+
+// ===========================================================================
+// estimateGyroBias — least-squares from rotation residuals
+// ===========================================================================
+//
+// For each interval k:
+//   dR_scan = R_k^T * R_{k+1}    (relative rotation from scan matching)
+//   dR_imu  = preints[k].delta_R (preintegrated with b_g = 0)
+//   residual: phi_k = Log(dR_scan^T * dR_imu)
+//
+// Linearising the rotation preintegration wrt b_g at the current b_g=0:
+//   phi_k ≈ dt_k * b_g
+//
+// Stacking: A * b_g = rhs  →  A^T A * b_g = A^T rhs
+// where A_k = dt_k * I,  rhs_k = phi_k
+//
+Eigen::Vector3d SfmLioInitializer::estimateGyroBias(
+    const std::vector<PreintResult>& preints) const {
+    const int N = static_cast<int>(frames_.size()) - 1;
+
+    Eigen::Matrix3d AtA = Eigen::Matrix3d::Zero();
+    Eigen::Vector3d Atrhs = Eigen::Vector3d::Zero();
+
+    for (int k = 0; k < N; ++k) {
+        const double dt = preints[k].dt;
+        if (dt < 1e-6) continue;
+
+        const Eigen::Matrix3d dR_scan =
+            frames_[k].pose.rotation().transpose() * frames_[k + 1].pose.rotation();
+        const Eigen::Matrix3d dR_err = dR_scan.transpose() * preints[k].delta_R;
+
+        // Log map: convert rotation matrix to axis-angle vector
+        const Eigen::AngleAxisd aa(dR_err);
+        const Eigen::Vector3d phi = aa.angle() * aa.axis();
+
+        // Normal equations contribution
+        AtA += (dt * dt) * Eigen::Matrix3d::Identity();
+        Atrhs += dt * phi;
+    }
+
+    Eigen::Vector3d b_g = Eigen::Vector3d::Zero();
+    if (AtA.determinant() > 1e-12) {
+        b_g = AtA.ldlt().solve(Atrhs);
+    }
+
+    // Clamp to physically reasonable bounds  (~1.0 deg/s = 0.01745 rad/s; allow up to 3 deg/s)
+    constexpr double kMaxGyrBias = 0.02;  // rad/s
+    b_g = b_g.cwiseMax(-kMaxGyrBias).cwiseMin(kMaxGyrBias);
+
+    std::clog << "[SfmInit] estimateGyroBias: b_g=(" << b_g.x() << ", " << b_g.y() << ", "
+              << b_g.z() << ") norm=" << b_g.norm() << " rad/s\n";
+    return b_g;
 }
 
 // ===========================================================================
@@ -269,17 +322,16 @@ bool SfmLioInitializer::solveLinearAlignment() {
     const int N = static_cast<int>(frames_.size()) - 1;  // number of intervals
     if (N < 2) return false;
 
-    // Preintegrate IMU for each interval
-    std::vector<PreintResult> preints(N);
+    // -----------------------------------------------------------------------
+    // Collect raw IMU batches for every inter-frame interval (reused across passes)
+    // -----------------------------------------------------------------------
+    std::vector<std::vector<core::ImuData>> batches(N);
     for (int k = 0; k < N; ++k) {
         const auto t_start = frames_[k].time;
         const auto t_end = frames_[k + 1].time;
 
-        // Collect IMU samples strictly inside (t_start, t_end) and interpolate at boundaries.
-        std::vector<core::ImuData> batch;
+        std::vector<core::ImuData>& batch = batches[k];
 
-        // Find the first IMU sample > t_start and the last < t_end.
-        // We'll also need the bracketing samples at each boundary for interpolation.
         const core::ImuData* before_start = nullptr;
         const core::ImuData* after_start = nullptr;
         const core::ImuData* before_end = nullptr;
@@ -295,21 +347,15 @@ bool SfmLioInitializer::solveLinearAlignment() {
             }
         }
 
-        // Interpolate start boundary
         if (before_start && after_start && after_start->timestamp > t_start) {
             batch.push_back(interpolateImu(*before_start, *after_start, t_start));
         }
-
-        // Interior samples
         for (const auto& imu : imu_buf_) {
             if (imu.timestamp > t_start && imu.timestamp < t_end) {
                 batch.push_back(imu);
             }
         }
-
-        // Interpolate end boundary
         if (before_end && before_end->timestamp < t_end) {
-            // Find first sample >= t_end
             for (size_t j = 0; j < imu_buf_.size(); ++j) {
                 if (imu_buf_[j].timestamp >= t_end) {
                     batch.push_back(interpolateImu(*before_end, imu_buf_[j], t_end));
@@ -317,12 +363,29 @@ bool SfmLioInitializer::solveLinearAlignment() {
                 }
             }
         }
+    }
 
-        preints[k] = preintegrateImu(batch);
+    // -----------------------------------------------------------------------
+    // Pass 1: preintegrate with b_g = 0 to estimate gyro bias
+    // -----------------------------------------------------------------------
+    std::vector<PreintResult> preints(N);
+    for (int k = 0; k < N; ++k) {
+        preints[k] = preintegrateImu(batches[k]);
         if (preints[k].dt < 1e-6) {
             std::clog << "[SfmInit] Interval " << k << " has no valid IMU data\n";
             return false;
         }
+    }
+
+    // Estimate gyro bias from rotation residuals (scan-match vs IMU)
+    const Eigen::Vector3d b_g_est = estimateGyroBias(preints);
+
+    // -----------------------------------------------------------------------
+    // Pass 2: re-preintegrate with estimated b_g correction
+    // -----------------------------------------------------------------------
+    for (int k = 0; k < N; ++k) {
+        preints[k] = preintegrateImu(batches[k], b_g_est);
+        if (preints[k].dt < 1e-6) return false;
     }
 
     // Build linear system: A * x = b
@@ -411,7 +474,7 @@ bool SfmLioInitializer::solveLinearAlignment() {
     result_.p = R_gw * frames_[last].pose.translation();
     result_.v = R_gw * velocities[last];
     result_.b_a = Eigen::Vector3d::Zero();
-    result_.b_g = Eigen::Vector3d::Zero();
+    result_.b_g = b_g_est;
     result_.gravity = Eigen::Vector3d(0.0, 0.0, -kGravityMagnitude);
 
     return true;
