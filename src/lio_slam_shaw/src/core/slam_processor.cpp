@@ -85,6 +85,7 @@ void SlamProcessor::frontendThread() {
                     viz_queue_.pop_front();
                 }
             }
+            viz_cv_.notify_one();
         }
         if (keyframe_to_push.has_value()) {
             std::lock_guard<std::mutex> backend_lock(backend_mutex_);

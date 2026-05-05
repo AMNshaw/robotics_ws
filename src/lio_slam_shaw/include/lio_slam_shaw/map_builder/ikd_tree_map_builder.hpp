@@ -1,6 +1,7 @@
 #ifndef LIO_SLAM_SHAW__MAP_BUILDER__IKD_TREE_MAP_BUILDER_HPP_
 #define LIO_SLAM_SHAW__MAP_BUILDER__IKD_TREE_MAP_BUILDER_HPP_
 
+#include <Eigen/Geometry>
 #include <mutex>
 #include <shared_mutex>
 #include <unordered_map>
@@ -18,6 +19,7 @@ struct IkdTreeMapBuilderParams {
     float ikd_delete_param = 0.5f;
     float ikd_balance_param = 0.6f;
     float ikd_downsample_size = 0.3f;
+    Eigen::Isometry3d T_base_lidar = Eigen::Isometry3d::Identity();
 };
 
 class IkdTreeMapBuilder : public core::IMapBuilder {
@@ -36,7 +38,10 @@ public:
                               std::vector<float>& out_distances) const override;
 
     /// Returns true once the ikd-tree has been built (at least one frame added).
-    bool isMapReady() const { return !is_first_frame_; }
+    bool isMapReady() const {
+        std::shared_lock<std::shared_mutex> lock(ikd_tree_mutex_);
+        return !is_first_frame_;
+    }
 
     /// Zero-copy KNN: returns reference to thread_local buffer (valid until next call on same
     /// thread)

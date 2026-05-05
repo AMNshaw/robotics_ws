@@ -38,6 +38,8 @@ core::IOdometryEstimator::SharedPtr OdometryEstimatorFactory::createFastLio(
         node->declare_parameter<int>("odometry_estimator.max_iterations", params.max_iterations);
     params.state_converge_threshold = node->declare_parameter<double>(
         "odometry_estimator.state_converge_threshold", params.state_converge_threshold);
+    params.estimate_gravity = node->declare_parameter<bool>("odometry_estimator.estimate_gravity",
+                                                            params.estimate_gravity);
 
     params.num_nearest_neighbors = node->declare_parameter<int>(
         "odometry_estimator.num_nearest_neighbors", params.num_nearest_neighbors);

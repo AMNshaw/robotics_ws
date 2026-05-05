@@ -49,6 +49,8 @@ core::ILioInitializer::SharedPtr LioInitializerFactory::create(
 
     sfm_init_params.min_init_scans =
         node->declare_parameter("initializer.sfm.min_init_scans", sfm_init_params.min_init_scans);
+    sfm_init_params.align_gravity =
+        node->declare_parameter("initializer.sfm.align_gravity", sfm_init_params.align_gravity);
     sfm_init_params.voxel_leaf_size =
         node->declare_parameter("initializer.sfm.voxel_leaf_size", sfm_init_params.voxel_leaf_size);
     sfm_init_params.acc_noise =

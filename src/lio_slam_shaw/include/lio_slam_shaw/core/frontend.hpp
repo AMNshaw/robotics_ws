@@ -17,6 +17,13 @@
 
 namespace lio_slam_shaw::core {
 
+struct FrontEndParams {
+    // 0 disables dropping. Dropping LiDAR frames is useful for live real-time
+    // demos, but it changes the scan-to-map sequence and can create large drift
+    // during offline dataset evaluation.
+    size_t max_pending_lidar_queue = 0;
+};
+
 class FrontEnd {
 public:
     using SharedPtr = std::shared_ptr<FrontEnd>;
@@ -25,7 +32,7 @@ public:
     FrontEnd(IScanPreprocessor::SharedPtr scan_preprocessor,
              IFeatureExtractor::SharedPtr feature_extractor,
              IOdometryEstimator::SharedPtr odometry_estimator,
-             ILioInitializer::SharedPtr initializer = nullptr);
+             ILioInitializer::SharedPtr initializer = nullptr, const FrontEndParams& params = {});
     ~FrontEnd();
 
     void feed_lidar(const LidarData& lidar);
@@ -44,6 +51,7 @@ private:
     IFeatureExtractor::SharedPtr feature_extractor_;
     IOdometryEstimator::SharedPtr odometry_estimator_;
     ILioInitializer::SharedPtr initializer_;
+    FrontEndParams params_;
     std::atomic<bool> initialized_{false};
 
     // Pending lidar queue (written by feed_lidar, consumed by processPipeline)

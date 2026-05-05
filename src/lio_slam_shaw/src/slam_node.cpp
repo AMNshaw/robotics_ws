@@ -176,7 +176,7 @@ void SlamNode::publishOdometry(const core::NavState& odom_state) {
     nav_msgs::msg::Odometry odom_msg;
     odom_msg.header.stamp = coreToRos(odom_state.timestamp);
     odom_msg.header.frame_id = "odom";
-    odom_msg.child_frame_id = "base_link";
+    odom_msg.child_frame_id = tracking_frame_id_;
 
     odom_msg.pose.pose.position.x = odom_state.pose.translation().x();
     odom_msg.pose.pose.position.y = odom_state.pose.translation().y();
@@ -230,7 +230,7 @@ void SlamNode::publishVisualization(const core::VisualizationData& viz_data) {
     tf_broadcaster_->sendTransform(tf_msg);
 
     cloud_msg->header.stamp = coreToRos(viz_data.timestamp);
-    cloud_msg->header.frame_id = tracking_frame_id_;
+    cloud_msg->header.frame_id = lidar_frame_id_;
     pcl::toROSMsg(*(viz_data.scan), *cloud_msg);
     cloud_publisher_->publish(*cloud_msg);
 }

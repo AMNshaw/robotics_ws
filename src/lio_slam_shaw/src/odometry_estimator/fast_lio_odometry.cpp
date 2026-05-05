@@ -387,8 +387,14 @@ FastLioOdometry::IeskfState FastLioOdometry::iteratedUpdate(const IeskfState& pr
     }
 
     IeskfState result = propagated_map;
-    const Eigen::Matrix<double, kStateDim, kStateDim> P_bar =
+    Eigen::Matrix<double, kStateDim, kStateDim> P_bar =
         propagated.P;  // propagated covariance (fixed)
+    if (!params_.estimate_gravity) {
+        P_bar.block<kStateDim, 2>(0, 15).setZero();
+        P_bar.block<2, kStateDim>(15, 0).setZero();
+        P_bar.block<2, 2>(15, 15).setIdentity();
+        P_bar.block<2, 2>(15, 15) *= 1e-12;
+    }
 
     // Posterior covariance from Woodbury: (P_bar^{-1} + H^T R^{-1} H)^{-1}
     Eigen::Matrix<double, kStateDim, kStateDim> P_posterior = P_bar;
@@ -419,6 +425,9 @@ FastLioOdometry::IeskfState FastLioOdometry::iteratedUpdate(const IeskfState& pr
         {
             const Eigen::Vector3d dg_3d = result.gravity - propagated_map.gravity;
             dx_prior.segment<2>(15) = propagated_map.gravity_basis.transpose() * dg_3d;
+        }
+        if (!params_.estimate_gravity) {
+            dx_prior.segment<2>(15).setZero();
         }
 
         // --- KNN + buildResidual + accumulate H^T*H, H^T*r (fused, parallelised) ---
@@ -474,7 +483,9 @@ FastLioOdometry::IeskfState FastLioOdometry::iteratedUpdate(const IeskfState& pr
 
         // --- Kalman gain via Woodbury identity (17×17 inverse instead of N×N) ---
         // z = r_inv * H^T * (r + H * dx_prior) = r_inv * (Htr + HtH * dx_prior)
-        const double r_inv = 1.0 / params_.measurement_noise;
+        const double measurement_var =
+            std::max(params_.measurement_noise * params_.measurement_noise, 1e-12);
+        const double r_inv = 1.0 / measurement_var;
         const Eigen::Matrix<double, kStateDim, kStateDim> HtRinvH = r_inv * HtH;
         const Eigen::Matrix<double, kStateDim, kStateDim> P_bar_inv_plus_HtRinvH =
             P_bar.ldlt().solve(Eigen::Matrix<double, kStateDim, kStateDim>::Identity()) + HtRinvH;
@@ -490,22 +501,18 @@ FastLioOdometry::IeskfState FastLioOdometry::iteratedUpdate(const IeskfState& pr
         result.b_a += dx_total.segment<3>(9);
         result.b_g += dx_total.segment<3>(12);
 
-        // Clamp bias magnitudes to physically reasonable bounds.
-        // MEMS acc bias is typically <0.1 m/s²; unconstrained estimation can
-        // produce wildly wrong values when the map is still sparse (first few
-        // frames) or when the motion profile doesn't fully excite bias.
-        constexpr double kMaxAccBias = 0.1;   // m/s²
-        constexpr double kMaxGyrBias = 0.05;  // rad/s
-        result.b_a = result.b_a.cwiseMax(-kMaxAccBias).cwiseMin(kMaxAccBias);
-        result.b_g = result.b_g.cwiseMax(-kMaxGyrBias).cwiseMin(kMaxGyrBias);
-
-        // Update gravity: g = g0 + B * δg, then re-project to sphere
-        {
+        // Update gravity: g = g0 + B * δg, then re-project to sphere.
+        // For z-up ROS datasets, keep gravity fixed after initialization; otherwise
+        // weak LiDAR constraints can couple through covariance and slowly tilt the map.
+        if (params_.estimate_gravity) {
             const Eigen::Vector2d dg = dx_total.segment<2>(15);
             result.gravity =
                 (propagated_map.gravity + propagated_map.gravity_basis * dg).normalized() *
                 kGravity;
             result.updateGravityBasis();
+        } else {
+            result.gravity = propagated_map.gravity;
+            result.gravity_basis = propagated_map.gravity_basis;
         }
 
         const Eigen::Vector3d dtheta = dx_total.segment<3>(6);
@@ -685,6 +692,7 @@ core::NavState FastLioOdometry::getLatestState() const {
         }
     }
     core::NavState nav;
+    nav.timestamp = s->timestamp;
     nav.pose.linear() = s->R;
     nav.pose.translation() = s->p;
     nav.linear_vel = s->v;

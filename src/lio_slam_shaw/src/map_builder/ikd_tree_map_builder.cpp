@@ -17,6 +17,7 @@ std::optional<core::Keyframe::SharedPtr> IkdTreeMapBuilder::addFrame(
     if (!cloud_body || cloud_body->empty()) return std::nullopt;
 
     const Eigen::Isometry3d& T_map_body = frame->matched_result.pose;
+    const Eigen::Isometry3d T_map_lidar = T_map_body * params_.T_base_lidar;
 
     size_t n_points = cloud_body->size();
     KD_TREE<core::PointXYZIRT>::PointVector points_world(n_points);
@@ -24,7 +25,7 @@ std::optional<core::Keyframe::SharedPtr> IkdTreeMapBuilder::addFrame(
 #pragma omp parallel for num_threads(4) schedule(dynamic)
     for (size_t i = 0; i < n_points; ++i) {
         const auto& p = (*cloud_body)[i];
-        Eigen::Vector3d pw = T_map_body * Eigen::Vector3d(p.x, p.y, p.z);
+        Eigen::Vector3d pw = T_map_lidar * Eigen::Vector3d(p.x, p.y, p.z);
 
         points_world[i] = p;
         points_world[i].x = static_cast<float>(pw.x());
@@ -33,11 +34,15 @@ std::optional<core::Keyframe::SharedPtr> IkdTreeMapBuilder::addFrame(
     }
     auto local_tree = ikd_tree_;
 
-    if (is_first_frame_) {
-        local_tree->Build(points_world);
-        is_first_frame_ = false;
-    } else
-        local_tree->Add_Points(points_world, true);
+    {
+        std::unique_lock<std::shared_mutex> lock(ikd_tree_mutex_);
+        if (is_first_frame_) {
+            local_tree->Build(points_world);
+            is_first_frame_ = false;
+        } else {
+            local_tree->Add_Points(points_world, true);
+        }
+    }
 
     if (is_updating_map_.load()) {
         KD_TREE<core::PointXYZIRT>::PointVector points_corrected = points_world;
@@ -85,8 +90,9 @@ void IkdTreeMapBuilder::addKeyFrame(const core::Keyframe::SharedPtr& keyframe) {
 
     KD_TREE<core::PointXYZIRT>::PointVector points_world;
     points_world.reserve(keyframe->cloud_body->size());
+    const Eigen::Isometry3d T_map_lidar = keyframe->pose * params_.T_base_lidar;
     for (const auto& p : *keyframe->cloud_body) {
-        Eigen::Vector3d pw = keyframe->pose * Eigen::Vector3d(p.x, p.y, p.z);
+        Eigen::Vector3d pw = T_map_lidar * Eigen::Vector3d(p.x, p.y, p.z);
         core::PointXYZIRT pt = p;
         pt.x = static_cast<float>(pw.x());
         pt.y = static_cast<float>(pw.y());
@@ -94,11 +100,14 @@ void IkdTreeMapBuilder::addKeyFrame(const core::Keyframe::SharedPtr& keyframe) {
         points_world.push_back(pt);
     }
 
-    if (is_first_frame_) {
-        ikd_tree_->Build(points_world);
-        is_first_frame_ = false;
-    } else {
-        ikd_tree_->Add_Points(points_world, true);
+    {
+        std::unique_lock<std::shared_mutex> lock(ikd_tree_mutex_);
+        if (is_first_frame_) {
+            ikd_tree_->Build(points_world);
+            is_first_frame_ = false;
+        } else {
+            ikd_tree_->Add_Points(points_world, true);
+        }
     }
 
     {
@@ -109,6 +118,7 @@ void IkdTreeMapBuilder::addKeyFrame(const core::Keyframe::SharedPtr& keyframe) {
 }
 
 void IkdTreeMapBuilder::clearMap() {
+    std::unique_lock<std::shared_mutex> tree_lock(ikd_tree_mutex_);
     ikd_tree_.reset();
     ikd_tree_ = std::make_shared<KD_TREE<core::PointXYZIRT>>(
         params_.ikd_delete_param, params_.ikd_balance_param, params_.ikd_downsample_size);
@@ -124,6 +134,7 @@ bool IkdTreeMapBuilder::searchKNearestPoints(const core::PointXYZIRT& query_pt, 
                                              float search_dist,
                                              std::vector<core::PointXYZIRT>& out_neighbors,
                                              std::vector<float>& out_distances) const {
+    std::shared_lock<std::shared_mutex> lock(ikd_tree_mutex_);
     if (!ikd_tree_) return false;
 
     // Use thread_local PointVector (Eigen-aligned) to interface with ikd-tree.
@@ -145,6 +156,7 @@ bool IkdTreeMapBuilder::searchKNearestPointsDirect(const core::PointXYZIRT& quer
                                                    float search_dist,
                                                    const PointVector*& out_neighbors,
                                                    const std::vector<float>*& out_distances) const {
+    std::shared_lock<std::shared_mutex> lock(ikd_tree_mutex_);
     if (!ikd_tree_) return false;
 
     // Thread-local buffers reused across calls (no allocation after warmup).
@@ -205,7 +217,7 @@ void IkdTreeMapBuilder::updateKeyframePoses(
         for (const auto& kf : keyframes_) {
             const auto& cloud = kf->cloud_body;
             if (!cloud || cloud->empty()) continue;
-            const auto& T = kf->pose;
+            const Eigen::Isometry3d T = kf->pose * params_.T_base_lidar;
             size_t kf_size = cloud->size();
 #pragma omp parallel for num_threads(4)
             for (size_t i = 0; i < kf_size; ++i) {
@@ -242,6 +254,7 @@ void IkdTreeMapBuilder::updateKeyframePoses(
 }
 
 void IkdTreeMapBuilder::updateMap() {
+    std::unique_lock<std::shared_mutex> tree_lock(ikd_tree_mutex_);
     if (!temp_ikd_tree_) return;
 
     {
@@ -277,6 +290,7 @@ std::optional<core::Keyframe::SharedPtr> IkdTreeMapBuilder::getLatestKeyframe() 
 }
 
 core::PointCloudIRTPtr IkdTreeMapBuilder::getGlobalMap() const {
+    std::shared_lock<std::shared_mutex> lock(ikd_tree_mutex_);
     auto local_tree = ikd_tree_;
     if (!local_tree || local_tree->Root_Node == nullptr)
         return std::make_shared<core::PointCloudIRT>();

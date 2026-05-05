@@ -3,6 +3,7 @@
 #include <pcl/filters/voxel_grid.h>
 
 #include <Eigen/SVD>
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <pcl/filters/impl/filter.hpp>
@@ -280,10 +281,6 @@ Eigen::Vector3d SfmLioInitializer::estimateGyroBias(
         b_g = AtA.ldlt().solve(Atrhs);
     }
 
-    // Clamp to physically reasonable bounds  (~1.0 deg/s = 0.01745 rad/s; allow up to 3 deg/s)
-    constexpr double kMaxGyrBias = 0.02;  // rad/s
-    b_g = b_g.cwiseMax(-kMaxGyrBias).cwiseMin(kMaxGyrBias);
-
     std::clog << "[SfmInit] estimateGyroBias: b_g=(" << b_g.x() << ", " << b_g.y() << ", "
               << b_g.z() << ") norm=" << b_g.norm() << " rad/s\n";
     return b_g;
@@ -457,15 +454,25 @@ bool SfmLioInitializer::solveLinearAlignment() {
     // --- Stage 2: 2-DOF manifold refinement (VINS-Mono §V-B) ---
     // Parametrise gravity on the sphere:  g = g0 + B * w,
     // where B = [b1, b2] is a 3×2 tangent-space basis at g0.
-    refineGravity(frames_, preints, g_refined, velocities);
+    g_refined = refineGravity(frames_, preints, g_refined, velocities);
 
     // --- Rotate world frame so that Z aligns with -gravity (gravity-aligned frame) ---
     // g_refined is currently in the init world frame (= first LiDAR body frame).
     // We want a new world frame where gravity = [0, 0, -G].
     // R_align rotates init_world → gravity_world.
-    const Eigen::Quaterniond R_align = Eigen::Quaterniond::FromTwoVectors(
-        g_refined, Eigen::Vector3d(0.0, 0.0, -kGravityMagnitude));
-    const Eigen::Matrix3d R_gw = R_align.toRotationMatrix();
+    Eigen::Matrix3d R_gw = Eigen::Matrix3d::Identity();
+    if (params_.align_gravity) {
+        const Eigen::Quaterniond R_align = Eigen::Quaterniond::FromTwoVectors(
+            g_refined, Eigen::Vector3d(0.0, 0.0, -kGravityMagnitude));
+        R_gw = R_align.toRotationMatrix();
+    } else {
+        const double tilt_deg =
+            std::acos(std::clamp(g_refined.normalized().dot(Eigen::Vector3d(0.0, 0.0, -1.0)), -1.0,
+                                 1.0)) *
+            180.0 / M_PI;
+        std::clog << "[SfmInit] Gravity alignment disabled; keeping scan-matching world frame "
+                  << "(solved tilt=" << tilt_deg << " deg)\n";
+    }
 
     // --- Fill result (in gravity-aligned world frame) ---
     const int last = static_cast<int>(frames_.size()) - 1;
@@ -565,6 +572,7 @@ void SfmLioInitializer::clearScans() {
     map_builder_ = std::make_shared<map_builder::IkdTreeMapBuilder>(map_builder_params_);
     scan_matcher_ =
         std::make_shared<scan_matcher::IkdTreeScanMatcher>(map_builder_, scan_matcher_params_);
+    scan_matcher_->setLidarExtrinsics(T_imu_lidar_);
 }
 
 }  // namespace lio_slam_shaw::initializer

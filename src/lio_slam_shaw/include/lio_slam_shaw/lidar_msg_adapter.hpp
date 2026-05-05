@@ -3,7 +3,9 @@
 
 #include <pcl_conversions/pcl_conversions.h>
 
+#include <algorithm>
 #include <builtin_interfaces/msg/time.hpp>
+#include <cmath>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 
 #include "lio_slam_shaw/core/sensor_data_types.hpp"
@@ -20,6 +22,16 @@ inline std::chrono::nanoseconds floatSecondsToChrono(float seconds) {
         std::chrono::duration<float>(seconds));
 }
 
+inline float maxPointRelativeTime(const core::PointCloudIRT& cloud) {
+    float max_time = 0.0f;
+    for (const auto& point : cloud.points) {
+        if (std::isfinite(point.time)) {
+            max_time = std::max(max_time, point.time);
+        }
+    }
+    return max_time;
+}
+
 inline core::LidarData convertVelodyne(const sensor_msgs::msg::PointCloud2::SharedPtr& msg) {
     auto cloud = std::make_shared<pcl::PointCloud<core::PointXYZIRT>>();
 
@@ -30,7 +42,7 @@ inline core::LidarData convertVelodyne(const sensor_msgs::msg::PointCloud2::Shar
     core::Timestamp time_end = timestamp;
 
     if (!cloud->empty()) {
-        time_end = time_start + floatSecondsToChrono(cloud->points.back().time);
+        time_end = time_start + floatSecondsToChrono(maxPointRelativeTime(*cloud));
     }
 
     return core::LidarData(timestamp, time_start, time_end, cloud);
@@ -61,7 +73,7 @@ inline core::LidarData convertOuster(const sensor_msgs::msg::PointCloud2::Shared
     core::Timestamp time_end = timestamp;
 
     if (!cloud->empty()) {
-        time_end = time_start + floatSecondsToChrono(cloud->points.back().time);
+        time_end = time_start + floatSecondsToChrono(maxPointRelativeTime(*cloud));
     }
 
     return core::LidarData(timestamp, time_start, time_end, cloud);

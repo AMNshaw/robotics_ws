@@ -15,6 +15,12 @@ namespace lio_slam_shaw::initializer {
 struct SfmLioInitializerParams {
     int min_init_scans = 10;  // minimum scans before attempting linear alignment
 
+    // If true, rotate the LiDAR SFM frame to the gravity direction solved from
+    // short-window IMU alignment. For datasets whose base_link/velodyne frame
+    // is already z-up, a noisy short-window gravity estimate can introduce a
+    // large artificial map tilt, so keep this disabled by default.
+    bool align_gravity = false;
+
     // Voxel downsample leaf size for raw cloud (0 = no downsample)
     float voxel_leaf_size = 0.5f;
 

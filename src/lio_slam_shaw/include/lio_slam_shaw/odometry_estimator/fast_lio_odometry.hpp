@@ -18,11 +18,12 @@ struct FastLioOdometryParams {
     double gyr_noise = 1.5636343949698187e-03;
     double acc_bias_noise = 6.4356659353532566e-05;
     double gyr_bias_noise = 3.5640318696367613e-05;
-    double measurement_noise = 0.01;  // point-to-plane residual noise (for covariance computation)
+    double measurement_noise = 0.01;  // point-to-plane residual std-dev [m]
 
     // iEKF solver
     int max_iterations = 5;
     double state_converge_threshold = 1e-3;  // ||dx|| < threshold → converge
+    bool estimate_gravity = false;           // keep gravity fixed after initialization by default
 
     // Point-to-plane matching (reuses the same scan search logic)
     int num_nearest_neighbors = 5;

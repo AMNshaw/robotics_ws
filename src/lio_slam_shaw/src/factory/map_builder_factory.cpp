@@ -4,7 +4,8 @@
 
 namespace lio_slam_shaw::factory {
 
-core::IMapBuilder::SharedPtr MapBuilderFactory::create(rclcpp::Node* node) {
+core::IMapBuilder::SharedPtr MapBuilderFactory::create(rclcpp::Node* node,
+                                                       const Eigen::Isometry3d& T_base_lidar) {
     std::string type = node->declare_parameter<std::string>("map_builder.type", "ikd_tree");
 
     if (type == "ikd_tree") {
@@ -19,6 +20,7 @@ core::IMapBuilder::SharedPtr MapBuilderFactory::create(rclcpp::Node* node) {
             node->declare_parameter<double>("map_builder.ikd_balance_param", 0.6));
         params.ikd_downsample_size = static_cast<float>(
             node->declare_parameter<double>("map_builder.ikd_downsample_size", 0.3));
+        params.T_base_lidar = T_base_lidar;
 
         return std::make_shared<map_builder::IkdTreeMapBuilder>(params);
     }

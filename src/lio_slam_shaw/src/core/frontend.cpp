@@ -8,11 +8,12 @@ namespace lio_slam_shaw::core {
 FrontEnd::FrontEnd(IScanPreprocessor::SharedPtr scan_preprocessor,
                    IFeatureExtractor::SharedPtr feature_extractor,
                    IOdometryEstimator::SharedPtr odometry_estimator,
-                   ILioInitializer::SharedPtr initializer)
+                   ILioInitializer::SharedPtr initializer, const FrontEndParams& params)
     : scan_preprocessor_(std::move(scan_preprocessor)),
       feature_extractor_(std::move(feature_extractor)),
       odometry_estimator_(std::move(odometry_estimator)),
       initializer_(std::move(initializer)),
+      params_(params),
       initialized_(initializer_ == nullptr) {
     if (initializer_) {
         init_thread_ = std::thread(&FrontEnd::initThread, this);
@@ -127,9 +128,9 @@ LioInitResult FrontEnd::staticImuFallback() const {
     for (size_t i = 0; i < n; ++i) mean_acc += imu_buf[i].acc;
     mean_acc /= static_cast<double>(n);
 
-    // mean_acc ≈ -g in body frame  →  g_body = -mean_acc
-    const Eigen::Vector3d g_body = -mean_acc;
-    const double mag = g_body.norm();
+    // At rest: acc_body ≈ R_body_world * (-gravity_world). Choose R_world_body
+    // so that R_world_body * mean_acc + gravity_world = 0.
+    const double mag = mean_acc.norm();
 
     if (mag < 1e-3) {
         std::clog << "[FrontEnd] static fallback: degenerate accel mean — using identity\n";
@@ -137,14 +138,14 @@ LioInitResult FrontEnd::staticImuFallback() const {
     }
 
     constexpr double kG = 9.80511;
-    // Rotation aligning world -Z (gravity direction) with g_body
-    const Eigen::Quaterniond q =
-        Eigen::Quaterniond::FromTwoVectors(Eigen::Vector3d(0.0, 0.0, -kG), g_body);
+    const Eigen::Vector3d gravity_world(0.0, 0.0, -kG);
+    const Eigen::Vector3d acc_world = -gravity_world;
+    const Eigen::Quaterniond q = Eigen::Quaterniond::FromTwoVectors(mean_acc, acc_world);
     res.R = q.toRotationMatrix();
-    res.gravity = g_body.normalized() * (-kG);
+    res.gravity = gravity_world;
     res.timestamp = imu_buf.back().timestamp;
 
-    std::clog << "[FrontEnd] static fallback: |g_body|=" << mag << " m/s² from " << n
+    std::clog << "[FrontEnd] static fallback: |mean_acc|=" << mag << " m/s² from " << n
               << " IMU samples\n";
     return res;
 }
@@ -170,8 +171,11 @@ std::optional<LidarFrame::SharedPtr> FrontEnd::processPipeline() {
         std::lock_guard<std::mutex> llock(lidar_mutex_);
         if (pending_lidar_.empty()) return std::nullopt;
 
-        // If falling behind significantly, drop stale frames — keep the latest
-        if (pending_lidar_.size() > 5) {
+        // If explicitly configured for live real-time, drop stale frames and keep
+        // the latest. Disabled by default for dataset evaluation: FAST-LIO-style
+        // scan-to-map odometry assumes consecutive scans are processed.
+        if (params_.max_pending_lidar_queue > 0 &&
+            pending_lidar_.size() > params_.max_pending_lidar_queue) {
             const size_t dropped = pending_lidar_.size() - 1;
             lidar = std::move(pending_lidar_.back());
             pending_lidar_.clear();

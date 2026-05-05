@@ -17,20 +17,21 @@ core::SlamProcessor::SharedPtr SlamFactory::create(rclcpp::Node* node,
     auto lio_initializer =
         LioInitializerFactory::create(node, extrinsics.T_base_lidar, extrinsics.T_base_imu);
 
-    auto scan_preprocessor = ScanPreprocessorFactory::create(node);
+    auto scan_preprocessor = ScanPreprocessorFactory::create(node, extrinsics.T_base_lidar);
 
     auto feature_extractor = FeatureExtractorFactory::create(node);
 
-    auto map_builder = MapBuilderFactory::create(node);
+    auto map_builder = MapBuilderFactory::create(node, extrinsics.T_base_lidar);
 
     auto odometry_estimator = OdometryEstimatorFactory::create(node, extrinsics.T_base_lidar,
                                                                extrinsics.T_base_imu, map_builder);
 
-    // LIO Initializer (SFM + IMU linear alignment)
-    const Eigen::Isometry3d T_imu_lidar = extrinsics.T_base_imu.inverse() * extrinsics.T_base_lidar;
+    core::FrontEndParams frontend_params;
+    frontend_params.max_pending_lidar_queue =
+        static_cast<size_t>(node->declare_parameter<int>("frontend.max_pending_lidar_queue", 0));
 
-    auto frontend = std::make_shared<core::FrontEnd>(scan_preprocessor, feature_extractor,
-                                                     odometry_estimator, lio_initializer);
+    auto frontend = std::make_shared<core::FrontEnd>(
+        scan_preprocessor, feature_extractor, odometry_estimator, lio_initializer, frontend_params);
 
     auto map_optimizer = MapOptimizerFactory::create(node);
     auto loop_closure_detector = LoopClosureDetectorFactory::create(node, extrinsics.T_base_lidar);
