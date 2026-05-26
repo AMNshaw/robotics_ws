@@ -387,8 +387,7 @@ FastLioOdometry::IeskfState FastLioOdometry::iteratedUpdate(const IeskfState& pr
     }
 
     IeskfState result = propagated_map;
-    Eigen::Matrix<double, kStateDim, kStateDim> P_bar =
-        propagated.P;  // propagated covariance (fixed)
+    Eigen::Matrix<double, kStateDim, kStateDim> P_bar = propagated.P;
     if (!params_.estimate_gravity) {
         P_bar.block<kStateDim, 2>(0, 15).setZero();
         P_bar.block<2, kStateDim>(15, 0).setZero();
@@ -399,6 +398,17 @@ FastLioOdometry::IeskfState FastLioOdometry::iteratedUpdate(const IeskfState& pr
     // Posterior covariance from Woodbury: (P_bar^{-1} + H^T R^{-1} H)^{-1}
     Eigen::Matrix<double, kStateDim, kStateDim> P_posterior = P_bar;
     int last_valid_num = 0;
+
+    // P_bar is fixed across iterations — invert once outside the loop.
+    const Eigen::Matrix<double, kStateDim, kStateDim> P_bar_inv =
+        P_bar.ldlt().solve(Eigen::Matrix<double, kStateDim, kStateDim>::Identity());
+
+    // Open one read-session over the ikd-tree for the whole iter loop.  All KNN queries in
+    // Phase 1 (parallel over scan points × max_iterations) reuse this single lock instead of
+    // re-acquiring shared_mutex atomics per query.  IkdTreeReadSession is a sibling class of
+    // IkdTreeMapBuilder (friend-granted access); constructing it directly avoids coupling the
+    // builder interface to the "open session" concept.
+    const map_builder::IkdTreeReadSession knn_session(*map_builder_);
 
     using Clock = std::chrono::steady_clock;
     for (int iter = 0; iter < params_.max_iterations; ++iter) {
@@ -450,7 +460,7 @@ FastLioOdometry::IeskfState FastLioOdometry::iteratedUpdate(const IeskfState& pr
             auto& acc = accums[tid];
 #pragma omp for schedule(static)
             for (int i = 0; i < n_pts; ++i) {
-                const auto plane = queryNearestPlane((*cloud)[i], T_world_lidar);
+                const auto plane = queryNearestPlane(knn_session, (*cloud)[i], T_world_lidar);
                 if (!plane.valid) continue;
                 const Eigen::Vector3d p_lidar((*cloud)[i].x, (*cloud)[i].y, (*cloud)[i].z);
                 const auto res = buildPointResidual(plane, p_lidar, t_map_lidar, result.R);
@@ -488,7 +498,7 @@ FastLioOdometry::IeskfState FastLioOdometry::iteratedUpdate(const IeskfState& pr
         const double r_inv = 1.0 / measurement_var;
         const Eigen::Matrix<double, kStateDim, kStateDim> HtRinvH = r_inv * HtH;
         const Eigen::Matrix<double, kStateDim, kStateDim> P_bar_inv_plus_HtRinvH =
-            P_bar.ldlt().solve(Eigen::Matrix<double, kStateDim, kStateDim>::Identity()) + HtRinvH;
+            P_bar_inv + HtRinvH;
         const Eigen::Matrix<double, kStateDim, kStateDim> gain_lhs =
             P_bar_inv_plus_HtRinvH.ldlt().solve(
                 Eigen::Matrix<double, kStateDim, kStateDim>::Identity());
@@ -563,7 +573,8 @@ FastLioOdometry::IeskfState FastLioOdometry::iteratedUpdate(const IeskfState& pr
 }
 
 FastLioOdometry::NearestPlaneResult FastLioOdometry::queryNearestPlane(
-    const core::PointXYZIRT& pt_lidar, const Eigen::Isometry3d& T_world_lidar) const {
+    const map_builder::IkdTreeReadSession& session, const core::PointXYZIRT& pt_lidar,
+    const Eigen::Isometry3d& T_world_lidar) const {
     const Eigen::Matrix3d R = T_world_lidar.linear();
     const Eigen::Vector3d t = T_world_lidar.translation();
 
@@ -575,53 +586,23 @@ FastLioOdometry::NearestPlaneResult FastLioOdometry::queryNearestPlane(
     q.z = static_cast<float>(R(2, 0) * pt_lidar.x + R(2, 1) * pt_lidar.y + R(2, 2) * pt_lidar.z +
                              t.z());
 
-    // Zero-copy KNN: get pointers to thread_local buffers inside map_builder
-    const map_builder::IkdTreeMapBuilder::PointVector* neighbors_ptr = nullptr;
+    // Zero-copy KNN through the open ReadSession — the read lock is held by the caller for
+    // the entire Phase-1 batch (no per-point lock atomics).
+    const map_builder::IkdTreeReadSession::PointVector* neighbors_ptr = nullptr;
     const std::vector<float>* distances_ptr = nullptr;
 
-    if (!map_builder_->searchKNearestPointsDirect(q, params_.num_nearest_neighbors,
-                                                  params_.search_radius, neighbors_ptr,
-                                                  distances_ptr)) {
+    if (!session.searchKNearest(q, params_.num_nearest_neighbors, params_.search_radius,
+                                neighbors_ptr, distances_ptr)) {
         return {false, {}, {}, {}};
     }
     if (static_cast<int>(neighbors_ptr->size()) < params_.min_plane_points) {
         return {false, {}, {}, {}};
     }
-    return fitPlaneDirect(*neighbors_ptr, Eigen::Vector3d(q.x, q.y, q.z));
+    return fitPlane(*neighbors_ptr, Eigen::Vector3d(q.x, q.y, q.z));
 }
 
 FastLioOdometry::NearestPlaneResult FastLioOdometry::fitPlane(
-    const std::vector<lio_slam_shaw::core::PointXYZIRT>& neighbors,
-    const Eigen::Vector3d& query_point_in_map) const {
-    Eigen::Vector3d centroid = Eigen::Vector3d::Zero();
-    for (const auto& p : neighbors) centroid += Eigen::Vector3d(p.x, p.y, p.z);
-    centroid /= static_cast<double>(neighbors.size());
-
-    Eigen::Matrix3d cov = Eigen::Matrix3d::Zero();
-    for (const auto& p : neighbors) {
-        Eigen::Vector3d dp = Eigen::Vector3d(p.x, p.y, p.z) - centroid;
-        cov += dp * dp.transpose();
-    }
-
-    Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> solver(cov);
-    const auto& eigenvalues = solver.eigenvalues();
-
-    if (eigenvalues(0) > params_.min_plane_eigenvalue_ratio * eigenvalues(2)) {
-        return {false, {}, {}, {}};
-    }
-
-    Eigen::Vector3d normal = solver.eigenvectors().col(0);
-
-    return NearestPlaneResult{
-        /*valid=*/true,
-        /*point_in_map=*/query_point_in_map,
-        /*normal=*/normal,
-        /*centroid=*/centroid,
-    };
-}
-
-FastLioOdometry::NearestPlaneResult FastLioOdometry::fitPlaneDirect(
-    const map_builder::IkdTreeMapBuilder::PointVector& neighbors,
+    const map_builder::IkdTreeReadSession::PointVector& neighbors,
     const Eigen::Vector3d& query_point_in_map) const {
     Eigen::Vector3d centroid = Eigen::Vector3d::Zero();
     for (const auto& p : neighbors) centroid += Eigen::Vector3d(p.x, p.y, p.z);

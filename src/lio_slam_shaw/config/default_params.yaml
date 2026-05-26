@@ -30,7 +30,7 @@
         gyr_bias_noise: 3.5640318696367613e-05
         # iEKF parameters
         measurement_noise: 0.01  # std-dev [m], squared inside the iEKF update
-        max_iterations: 5
+        max_iterations: 3
         state_converge_threshold: 1e-3
         estimate_gravity: false
         # Point-to-plane matching

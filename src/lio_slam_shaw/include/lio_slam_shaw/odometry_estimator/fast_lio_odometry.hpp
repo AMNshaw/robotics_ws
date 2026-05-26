@@ -128,15 +128,15 @@ private:
     // Returns the converged state (does not modify state_ until accepted).
     IeskfState iteratedUpdate(const IeskfState& propagated,
                               const core::FeatureSet& features);  // NOLINT
-    NearestPlaneResult fitPlane(const std::vector<lio_slam_shaw::core::PointXYZIRT>& neighbors,
+
+    NearestPlaneResult fitPlane(const map_builder::IkdTreeReadSession::PointVector& neighbors,
                                 const Eigen::Vector3d& query_point_in_map) const;
 
-    NearestPlaneResult fitPlaneDirect(const map_builder::IkdTreeMapBuilder::PointVector& neighbors,
-                                      const Eigen::Vector3d& query_point_in_map) const;
-
     // Transform pt_lidar to the map frame using T_world_lidar, search K nearest neighbours in the
-    // ikd-tree, and fit a plane.  Thread-safe (uses thread_local buffers internally).
-    NearestPlaneResult queryNearestPlane(const core::PointXYZIRT& pt_lidar,
+    // ikd-tree, and fit a plane.  The caller passes an open IkdTreeReadSession so the read lock is
+    // held ONCE for the whole iEKF Phase-1 batch instead of being re-acquired per point.
+    NearestPlaneResult queryNearestPlane(const map_builder::IkdTreeReadSession& session,
+                                         const core::PointXYZIRT& pt_lidar,
                                          const Eigen::Isometry3d& T_world_lidar) const;
 
     // Compute point-to-plane Jacobian and residual for one point.

@@ -8,6 +8,7 @@
 #include "lio_slam_shaw/core/i_map_builder.hpp"
 #include "lio_slam_shaw/core/i_scan_matcher.hpp"
 #include "lio_slam_shaw/core/sensor_data_types.hpp"
+#include "lio_slam_shaw/map_builder/ikd_tree_map_builder.hpp"
 
 namespace lio_slam_shaw::scan_matcher {
 
@@ -57,10 +58,11 @@ private:
 
     static bool checkDegenerate(const Eigen::Matrix<double, 6, 6>& H, double degenerate_threshold);
 
-    NearestPlaneResult fitPlane(const std::vector<lio_slam_shaw::core::PointXYZIRT>& neighbors,
+    NearestPlaneResult fitPlane(const map_builder::IkdTreeReadSession::PointVector& neighbors,
                                 const Eigen::Vector3d& query_point_in_map) const;
 
     core::IMapBuilder::SharedPtr map_builder_;
+    std::shared_ptr<map_builder::IkdTreeMapBuilder> ikd_map_builder_;
     IkdTreeScanMatcherParams params_;
     Eigen::Isometry3d T_base_lidar_ = Eigen::Isometry3d::Identity();
 };

@@ -130,46 +130,29 @@ void IkdTreeMapBuilder::clearMap() {
     next_keyframe_id_ = 0;
 }
 
-bool IkdTreeMapBuilder::searchKNearestPoints(const core::PointXYZIRT& query_pt, int k,
-                                             float search_dist,
-                                             std::vector<core::PointXYZIRT>& out_neighbors,
-                                             std::vector<float>& out_distances) const {
-    std::shared_lock<std::shared_mutex> lock(ikd_tree_mutex_);
-    if (!ikd_tree_) return false;
+// --- IkdTreeReadSession --------------------------------------------------------------------
 
-    // Use thread_local PointVector (Eigen-aligned) to interface with ikd-tree.
-    // Nearest_Search now reuses capacity via resize() — no allocation after warmup.
-    thread_local KD_TREE<core::PointXYZIRT>::PointVector tls_neighbors;
-    thread_local std::vector<float> tls_distances;
+IkdTreeReadSession::IkdTreeReadSession(const IkdTreeMapBuilder& owner)
+    : owner_(&owner), lock_(owner.ikd_tree_mutex_) {}
 
-    const_cast<KD_TREE<core::PointXYZIRT>*>(ikd_tree_.get())
-        ->Nearest_Search(query_pt, k, tls_neighbors, tls_distances, search_dist);
+bool IkdTreeReadSession::searchKNearest(const core::PointXYZIRT& query_pt, int k, float search_dist,
+                                        const PointVector*& out_neighbors,
+                                        const std::vector<float>*& out_distances) const {
+    if (!owner_ || !owner_->ikd_tree_) return false;
 
-    // Single copy (PointVector with Eigen allocator → std::vector)
-    out_neighbors.assign(tls_neighbors.begin(), tls_neighbors.end());
-    out_distances.assign(tls_distances.begin(), tls_distances.end());
-
-    return true;
-}
-
-bool IkdTreeMapBuilder::searchKNearestPointsDirect(const core::PointXYZIRT& query_pt, int k,
-                                                   float search_dist,
-                                                   const PointVector*& out_neighbors,
-                                                   const std::vector<float>*& out_distances) const {
-    std::shared_lock<std::shared_mutex> lock(ikd_tree_mutex_);
-    if (!ikd_tree_) return false;
-
-    // Thread-local buffers reused across calls (no allocation after warmup).
+    // Per-thread reusable buffers; safe under parallel OMP (each thread has its own).
     thread_local PointVector tls_neighbors;
     thread_local std::vector<float> tls_distances;
 
-    const_cast<KD_TREE<core::PointXYZIRT>*>(ikd_tree_.get())
+    const_cast<KD_TREE<core::PointXYZIRT>*>(owner_->ikd_tree_.get())
         ->Nearest_Search(query_pt, k, tls_neighbors, tls_distances, search_dist);
 
     out_neighbors = &tls_neighbors;
     out_distances = &tls_distances;
     return true;
 }
+
+// -------------------------------------------------------------------------------------------
 
 void IkdTreeMapBuilder::updateKeyframePoses(
     const std::vector<std::pair<uint64_t, Eigen::Isometry3d>>& id_pose_pairs) {

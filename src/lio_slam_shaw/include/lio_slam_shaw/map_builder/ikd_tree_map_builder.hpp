@@ -12,6 +12,8 @@
 
 namespace lio_slam_shaw::map_builder {
 
+class IkdTreeReadSession;  // defined below, after IkdTreeMapBuilder
+
 struct IkdTreeMapBuilderParams {
     double keyframe_distance_threshold = 1.0;
     double keyframe_angle_threshold = 0.2;
@@ -33,22 +35,11 @@ public:
 
     void clearMap() override;
 
-    bool searchKNearestPoints(const core::PointXYZIRT& query_pt, int k, float search_dist,
-                              std::vector<core::PointXYZIRT>& out_neighbors,
-                              std::vector<float>& out_distances) const override;
-
     /// Returns true once the ikd-tree has been built (at least one frame added).
-    bool isMapReady() const {
+    bool isMapReady() const override {
         std::shared_lock<std::shared_mutex> lock(ikd_tree_mutex_);
         return !is_first_frame_;
     }
-
-    /// Zero-copy KNN: returns reference to thread_local buffer (valid until next call on same
-    /// thread)
-    using PointVector = KD_TREE<core::PointXYZIRT>::PointVector;
-    bool searchKNearestPointsDirect(const core::PointXYZIRT& query_pt, int k, float search_dist,
-                                    const PointVector*& out_neighbors,
-                                    const std::vector<float>*& out_distances) const;
 
     void updateKeyframePoses(
         const std::vector<std::pair<uint64_t, Eigen::Isometry3d>>& id_pose_pairs) override;
@@ -62,6 +53,10 @@ public:
 
 private:
     bool isNewKeyframe(const Eigen::Isometry3d& pose) const;
+
+    // IkdTreeReadSession is granted access to the ikd-tree and its mutex so it can take the
+    // read lock and run zero-copy KNN queries inside a batched session.
+    friend class IkdTreeReadSession;
 
     IkdTreeMapBuilderParams params_;
 
@@ -81,6 +76,35 @@ private:
     std::unordered_map<uint64_t, size_t> keyframe_index_;  // id → keyframes_ 的 index
 
     std::atomic<uint64_t> next_keyframe_id_{0};
+};
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+/// RAII read-session over an IkdTreeMapBuilder's internal ikd-tree.  Acquires the map builder's
+/// internal read lock for the session's lifetime so a batch of KNN queries (e.g. iEKF Phase-1
+/// parallel KNN over thousands of scan points × max_iterations) avoids per-query shared_mutex
+/// atomics.  Uses friend access — no public API pollution on the map builder.
+class IkdTreeReadSession {
+public:
+    using PointVector = KD_TREE<core::PointXYZIRT>::PointVector;
+
+    /// Acquire the read lock on `owner`'s ikd-tree.  The session must outlive any
+    /// pointer returned from `searchKNearest()`.
+    explicit IkdTreeReadSession(const IkdTreeMapBuilder& owner);
+
+    IkdTreeReadSession(IkdTreeReadSession&&) noexcept = default;
+    IkdTreeReadSession& operator=(IkdTreeReadSession&&) noexcept = default;
+    IkdTreeReadSession(const IkdTreeReadSession&) = delete;
+    IkdTreeReadSession& operator=(const IkdTreeReadSession&) = delete;
+
+    /// KNN inside the held read lock.  Output buffers reference thread_local storage and remain
+    /// valid until the next call on the same thread.
+    bool searchKNearest(const core::PointXYZIRT& query_pt, int k, float search_dist,
+                        const PointVector*& out_neighbors,
+                        const std::vector<float>*& out_distances) const;
+
+private:
+    const IkdTreeMapBuilder* owner_;
+    std::shared_lock<std::shared_mutex> lock_;
 };
 
 }  // namespace lio_slam_shaw::map_builder

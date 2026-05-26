@@ -43,9 +43,10 @@ public:
 
     virtual void clearMap() = 0;
 
-    virtual bool searchKNearestPoints(const core::PointXYZIRT& query_pt, int k, float search_dist,
-                                      std::vector<core::PointXYZIRT>& out_neighbors,
-                                      std::vector<float>& out_distances) const = 0;
+    /// Returns true once the underlying map has at least one frame ingested.  Callers (e.g. iEKF
+    /// odometry) use this to skip scan-to-map updates on the very first frame, when KNN queries
+    /// would return garbage.
+    virtual bool isMapReady() const = 0;
 
     virtual void updateKeyframePoses(
         const std::vector<std::pair<uint64_t, Eigen::Isometry3d>>& id_pose_pairs) = 0;
