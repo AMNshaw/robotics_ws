@@ -3,7 +3,7 @@
     ros__parameters:
       lidar_type: "Velodyne"
       lidar_topic: "/points_raw"
-      imu_topic: "/imu_correct"
+      imu_topic: "/imu_raw"
       tracking_frame_id: "base_link"
       lidar_frame_id: "velodyne"
       imu_frame_id: "imu_link"

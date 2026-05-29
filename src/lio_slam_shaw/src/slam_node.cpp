@@ -229,9 +229,9 @@ void SlamNode::publishVisualization(const core::VisualizationData& viz_data) {
 
     tf_broadcaster_->sendTransform(tf_msg);
 
+    pcl::toROSMsg(*(viz_data.scan), *cloud_msg);
     cloud_msg->header.stamp = coreToRos(viz_data.timestamp);
     cloud_msg->header.frame_id = lidar_frame_id_;
-    pcl::toROSMsg(*(viz_data.scan), *cloud_msg);
     cloud_publisher_->publish(*cloud_msg);
 }
 

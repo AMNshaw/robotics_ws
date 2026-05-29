@@ -398,10 +398,7 @@ FastLioOdometry::IeskfState FastLioOdometry::iteratedUpdate(const IeskfState& pr
     // Posterior covariance from Woodbury: (P_bar^{-1} + H^T R^{-1} H)^{-1}
     Eigen::Matrix<double, kStateDim, kStateDim> P_posterior = P_bar;
     int last_valid_num = 0;
-
-    // P_bar is fixed across iterations — invert once outside the loop.
-    const Eigen::Matrix<double, kStateDim, kStateDim> P_bar_inv =
-        P_bar.ldlt().solve(Eigen::Matrix<double, kStateDim, kStateDim>::Identity());
+    int converge_count = 0;  // need 2 consecutive convergences (FAST-LIO style)
 
     // Open one read-session over the ikd-tree for the whole iter loop.  All KNN queries in
     // Phase 1 (parallel over scan points × max_iterations) reuse this single lock instead of
@@ -439,6 +436,40 @@ FastLioOdometry::IeskfState FastLioOdometry::iteratedUpdate(const IeskfState& pr
         if (!params_.estimate_gravity) {
             dx_prior.segment<2>(15).setZero();
         }
+
+        // --- SO3 covariance correction (FAST-LIO style) ---
+        // When the linearization point moves from x_propagated to x_current (by dx_prior),
+        // the covariance in the SO3 tangent space at the new point is related by J_r^{-T}.
+        // P_iter = J^{-T} * P_bar * J^{-1} for the rotation block rows/columns.
+        Eigen::Matrix<double, kStateDim, kStateDim> P_iter = P_bar;
+        {
+            const Eigen::Vector3d phi = dx_prior.segment<3>(6);
+            const double phi_norm = phi.norm();
+            // Compute J_r(phi)^{-1} = I + 0.5*[phi]x + c2*[phi]x^2
+            // where c2 = 1/|phi|^2 - (1+cos|phi|)/(2*|phi|*sin|phi|)
+            Eigen::Matrix3d Jr_inv;
+            if (phi_norm < 1e-8) {
+                Jr_inv = Eigen::Matrix3d::Identity();
+            } else {
+                const Eigen::Matrix3d phi_x = skew(phi);
+                const Eigen::Matrix3d phi_x2 = phi_x * phi_x;
+                const double c2 = 1.0 / (phi_norm * phi_norm) -
+                                  (1.0 + std::cos(phi_norm)) /
+                                      (2.0 * phi_norm * std::sin(phi_norm));
+                Jr_inv = Eigen::Matrix3d::Identity() + 0.5 * phi_x + c2 * phi_x2;
+            }
+            const Eigen::Matrix3d Jr_inv_T = Jr_inv.transpose();
+            // Transform rotation block rows (indices 6:9)
+            P_iter.block<3, kStateDim>(6, 0) = Jr_inv_T * P_iter.block<3, kStateDim>(6, 0);
+            // Transform rotation block columns
+            P_iter.block<kStateDim, 3>(0, 6) = P_iter.block<kStateDim, 3>(0, 6) * Jr_inv;
+            // Also transform dx_prior's rotation part to the new tangent space
+            dx_prior.segment<3>(6) = Jr_inv_T * dx_prior.segment<3>(6);
+        }
+
+        // P_iter^{-1} for Woodbury (17×17 — cheap)
+        const Eigen::Matrix<double, kStateDim, kStateDim> P_iter_inv =
+            P_iter.ldlt().solve(Eigen::Matrix<double, kStateDim, kStateDim>::Identity());
 
         // --- KNN + buildResidual + accumulate H^T*H, H^T*r (fused, parallelised) ---
         const int n_pts = static_cast<int>(cloud->size());
@@ -497,10 +528,10 @@ FastLioOdometry::IeskfState FastLioOdometry::iteratedUpdate(const IeskfState& pr
             std::max(params_.measurement_noise * params_.measurement_noise, 1e-12);
         const double r_inv = 1.0 / measurement_var;
         const Eigen::Matrix<double, kStateDim, kStateDim> HtRinvH = r_inv * HtH;
-        const Eigen::Matrix<double, kStateDim, kStateDim> P_bar_inv_plus_HtRinvH =
-            P_bar_inv + HtRinvH;
+        const Eigen::Matrix<double, kStateDim, kStateDim> P_inv_plus_HtRinvH =
+            P_iter_inv + HtRinvH;
         const Eigen::Matrix<double, kStateDim, kStateDim> gain_lhs =
-            P_bar_inv_plus_HtRinvH.ldlt().solve(
+            P_inv_plus_HtRinvH.ldlt().solve(
                 Eigen::Matrix<double, kStateDim, kStateDim>::Identity());
         const Eigen::Matrix<double, kStateDim, 1> z = r_inv * (Htr + HtH * dx_prior);
         const Eigen::Matrix<double, kStateDim, 1> dx_total = gain_lhs * z;
@@ -532,21 +563,52 @@ FastLioOdometry::IeskfState FastLioOdometry::iteratedUpdate(const IeskfState& pr
                           : Eigen::AngleAxisd(angle, dtheta / angle).toRotationMatrix();
         result.R = propagated_map.R * dR;
 
-        // Save for final P update: gain_lhs = (P_bar^{-1} + H^T R^{-1} H)^{-1}
-        // which IS the posterior covariance directly.
+        // Save for final P update: gain_lhs = (P_iter^{-1} + H^T R^{-1} H)^{-1}
+        // Apply SO3 correction to the posterior covariance (rotation rows/columns)
+        // so it's expressed in the tangent space at x_new = propagated ⊞ dx_total.
         P_posterior = gain_lhs;
+        {
+            const Eigen::Vector3d dtheta_post = dx_total.segment<3>(6);
+            const double phi_norm = dtheta_post.norm();
+            Eigen::Matrix3d Jr_inv_post;
+            if (phi_norm < 1e-8) {
+                Jr_inv_post = Eigen::Matrix3d::Identity();
+            } else {
+                const Eigen::Matrix3d phi_x = skew(dtheta_post);
+                const Eigen::Matrix3d phi_x2 = phi_x * phi_x;
+                const double c2 = 1.0 / (phi_norm * phi_norm) -
+                                  (1.0 + std::cos(phi_norm)) /
+                                      (2.0 * phi_norm * std::sin(phi_norm));
+                Jr_inv_post = Eigen::Matrix3d::Identity() + 0.5 * phi_x + c2 * phi_x2;
+            }
+            const Eigen::Matrix3d Jr_inv_T = Jr_inv_post.transpose();
+            P_posterior.block<3, kStateDim>(6, 0) =
+                Jr_inv_T * P_posterior.block<3, kStateDim>(6, 0);
+            P_posterior.block<kStateDim, 3>(0, 6) =
+                P_posterior.block<kStateDim, 3>(0, 6) * Jr_inv_post;
+        }
         last_valid_num = valid_num;
 
-        // Convergence: ||dx_total − dx_prior|| = incremental change
-        const double delta = (dx_total - dx_prior).norm();
-        if (iter == 0 || delta < params_.state_converge_threshold) {
-            // Log first-iteration diagnostics: residual quality and correction magnitude
+        // --- Convergence: per-element L∞ with 2 consecutive passes (FAST-LIO style) ---
+        const Eigen::Matrix<double, kStateDim, 1> dx_delta = dx_total - dx_prior;
+        bool this_converge = true;
+        for (int d = 0; d < kStateDim; ++d) {
+            if (std::fabs(dx_delta(d)) > params_.state_converge_threshold) {
+                this_converge = false;
+                break;
+            }
+        }
+        if (this_converge) {
+            ++converge_count;
+        } else {
+            converge_count = 0;
+        }
+
+        if (converge_count >= 2 || iter == params_.max_iterations - 1) {
             std::clog << "[iEKF] it=" << iter << " valid=" << valid_num << "/" << n_pts
                       << " rms_r=" << rms_residual << " dp=" << dx_total.segment<3>(0).norm()
                       << " dv=" << dx_total.segment<3>(3).norm()
                       << " dba=" << dx_total.segment<3>(9).norm() << '\n';
-        }
-        if (delta < params_.state_converge_threshold) {
             break;
         }
     }
