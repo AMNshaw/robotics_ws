@@ -82,6 +82,7 @@ inline core::LidarData convertOuster(const sensor_msgs::msg::PointCloud2::Shared
 // Not include livox driver yet, use sensor_msgs::msg::PointCloud2 as input for now. --- IGNORE ---
 
 inline core::LidarData convertLivox(const sensor_msgs::msg::PointCloud2::SharedPtr& msg) {
+    (void)msg;  // To avoid unused parameter warning
     return core::LidarData();
 }
 

@@ -15,6 +15,7 @@ namespace lio_slam_shaw {
 SlamNode::SlamNode(const rclcpp::NodeOptions& options) : Node("lio_slam_shaw_node", options) {
     RCLCPP_INFO(get_logger(), "Initializing LIO-SLAM-Shaw Node...");
 
+    // Configuring Lidar and IMU subscriptions based on parameters
     const std::string lidar_type = declare_parameter("lidar_type", "Velodyne");
     const std::string lidar_topic = declare_parameter("lidar_topic", "/points_raw");
     if (lidar_topic.empty()) {
@@ -27,6 +28,7 @@ SlamNode::SlamNode(const rclcpp::NodeOptions& options) : Node("lio_slam_shaw_nod
         throw std::invalid_argument("Imu topic is not specified");
     }
 
+    // Creating Lidar instance
     if (lidar_type == "Velodyne") {
         velodyne_subscription_ = create_subscription<sensor_msgs::msg::PointCloud2>(
             lidar_topic, 10,
@@ -52,6 +54,7 @@ SlamNode::SlamNode(const rclcpp::NodeOptions& options) : Node("lio_slam_shaw_nod
     }
     RCLCPP_INFO(get_logger(), "Created Lidar Subscription: %s", lidar_type.c_str());
 
+    // Configuring sensors extrinsics
     bool use_tf_extrinsic = declare_parameter("extrinsics.use_tf_extrinsic", false);
     tracking_frame_id_ = declare_parameter("tracking_frame_id", "base_link");
     lidar_frame_id_ = declare_parameter("lidar_frame_id", "lidar_link");
@@ -119,20 +122,37 @@ SlamNode::SlamNode(const rclcpp::NodeOptions& options) : Node("lio_slam_shaw_nod
         RCLCPP_INFO(get_logger(), "Static TFs for extrinsics broadcasted.");
     }
 
+    // Congiguring path management parameters
+    this->declare_parameter<int>("max_path_size", 5000);
+    this->declare_parameter<double>("update_distance_thresh", 0.1);
+    this->declare_parameter<double>("update_angle_thresh", 0.05);
+    max_path_size_ = this->get_parameter("max_path_size").as_int();
+    update_distance_thresh_ = this->get_parameter("update_distance_thresh").as_double();
+    update_angle_thresh_ = this->get_parameter("update_angle_thresh").as_double();
+    path_msg_.poses.reserve(max_path_size_ + 1);
+    path_msg_.header.frame_id = "odom";
+    has_last_pose_ = false;
+
+    // Creating SlamProcessor and registering callbacks
     slam_processor_ = factory::SlamFactory::create(this, extrinsics);
-    slam_processor_->registerOdometryCallback(
-        [this](const core::NavState& odom_state) { publishOdometry(odom_state); });
+    slam_processor_->registerOdometryCallback([this](const core::NavState& odom_state) {
+        publishOdometry(odom_state);
+        publishPath(odom_state);
+    });
     slam_processor_->registerVisualizationCallback(
         [this](const core::VisualizationData& viz_data) { publishVisualization(viz_data); });
 
+    // Creating publishers for odometry and visualization
     odom_publisher_ = create_publisher<nav_msgs::msg::Odometry>("odom", 10);
     cloud_publisher_ = create_publisher<sensor_msgs::msg::PointCloud2>("scan", 10);
+    path_publisher_ = create_publisher<nav_msgs::msg::Path>("path", 10);
 
     imu_subscription_ = create_subscription<sensor_msgs::msg::Imu>(
         imu_topic, 100, std::bind(&SlamNode::imuCallback, this, std::placeholders::_1));
 
     tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
+    // Starting the SlamProcessor
     slam_processor_->start();
 
     RCLCPP_INFO(get_logger(), "LIO-SLAM-Shaw Node started.");
@@ -209,6 +229,47 @@ void SlamNode::publishOdometry(const core::NavState& odom_state) {
     tf_msg.transform.rotation = quat;
 
     tf_broadcaster_->sendTransform(tf_msg);
+}
+
+void SlamNode::publishPath(const core::NavState& odom_state) {
+    geometry_msgs::msg::PoseStamped pose_stamped;
+    pose_stamped.header.stamp = coreToRos(odom_state.timestamp);
+    pose_stamped.header.frame_id = "odom";
+    pose_stamped.pose.position.x = odom_state.pose.translation().x();
+    pose_stamped.pose.position.y = odom_state.pose.translation().y();
+    pose_stamped.pose.position.z = odom_state.pose.translation().z();
+    Eigen::Quaterniond q(odom_state.pose.rotation());
+    pose_stamped.pose.orientation.x = q.x();
+    pose_stamped.pose.orientation.y = q.y();
+    pose_stamped.pose.orientation.z = q.z();
+    pose_stamped.pose.orientation.w = q.w();
+
+    if (!has_last_pose_) {
+        path_msg_.poses.push_back(pose_stamped);
+        has_last_pose_ = true;
+        path_publisher_->publish(path_msg_);
+        return;
+    }
+
+    const auto& last_pose = path_msg_.poses.back();
+    double dx = pose_stamped.pose.position.x - last_pose.pose.position.x;
+    double dy = pose_stamped.pose.position.y - last_pose.pose.position.y;
+    double dz = pose_stamped.pose.position.z - last_pose.pose.position.z;
+    double distance = std::sqrt(dx * dx + dy * dy + dz * dz);
+
+    Eigen::Quaterniond last_q(last_pose.pose.orientation.w, last_pose.pose.orientation.x,
+                              last_pose.pose.orientation.y, last_pose.pose.orientation.z);
+    Eigen::Quaterniond current_q(pose_stamped.pose.orientation.w, pose_stamped.pose.orientation.x,
+                                 pose_stamped.pose.orientation.y, pose_stamped.pose.orientation.z);
+    double angle_diff = current_q.angularDistance(last_q);
+
+    if (distance >= update_distance_thresh_ || angle_diff >= update_angle_thresh_) {
+        if (path_msg_.poses.size() >= static_cast<size_t>(max_path_size_)) {
+            path_msg_.poses.erase(path_msg_.poses.begin());
+        }
+        path_msg_.poses.push_back(pose_stamped);
+        path_publisher_->publish(path_msg_);
+    }
 }
 
 void SlamNode::publishVisualization(const core::VisualizationData& viz_data) {

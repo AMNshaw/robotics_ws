@@ -9,6 +9,7 @@
 #include <memory>
 #include <mutex>
 #include <nav_msgs/msg/odometry.hpp>
+#include <nav_msgs/msg/path.hpp>
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
@@ -44,10 +45,13 @@ private:
 
     void publishOdometry(const core::NavState& odom_state);
 
+    void publishPath(const core::NavState& odom_state);
+
     void publishVisualization(const core::VisualizationData& viz_data);
 
     std::shared_ptr<rclcpp::Publisher<nav_msgs::msg::Odometry>> odom_publisher_;
     std::shared_ptr<rclcpp::Publisher<sensor_msgs::msg::PointCloud2>> cloud_publisher_;
+    std::shared_ptr<rclcpp::Publisher<nav_msgs::msg::Path>> path_publisher_;
 
     std::shared_ptr<rclcpp::Subscription<sensor_msgs::msg::Imu>> imu_subscription_;
     std::shared_ptr<rclcpp::Subscription<sensor_msgs::msg::PointCloud2>> velodyne_subscription_;
@@ -56,6 +60,12 @@ private:
 
     std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
     std::shared_ptr<tf2_ros::StaticTransformBroadcaster> tf_static_broadcaster_;
+
+    nav_msgs::msg::Path path_msg_;
+    int max_path_size_ = 5000;
+    double update_distance_thresh_ = 0.1;
+    double update_angle_thresh_ = 0.05;
+    bool has_last_pose_ = false;
 
     std::string tracking_frame_id_ = "";
     std::string lidar_frame_id_ = "";
