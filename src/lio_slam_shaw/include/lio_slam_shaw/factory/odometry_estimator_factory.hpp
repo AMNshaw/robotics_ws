@@ -3,22 +3,23 @@
 
 #include <rclcpp/rclcpp.hpp>
 
-#include "lio_slam_shaw/core/i_map_builder.hpp"
 #include "lio_slam_shaw/core/i_odometry_estimator.hpp"
+#include "lio_slam_shaw/map_builder/ikd_tree_local_map_builder.hpp"
 
 namespace lio_slam_shaw::factory {
 
 class OdometryEstimatorFactory {
 public:
-    static core::IOdometryEstimator::SharedPtr create(rclcpp::Node* node,
-                                                      const Eigen::Isometry3d& T_base_lidar,
-                                                      const Eigen::Isometry3d& T_base_imu,
-                                                      core::IMapBuilder::SharedPtr map_builder);
+    static core::IOdometryEstimator::SharedPtr create(
+        rclcpp::Node* node, const Eigen::Isometry3d& T_base_lidar,
+        const Eigen::Isometry3d& T_base_imu,
+        std::shared_ptr<map_builder::IkdTreeLocalMapBuilder> local_map);
 
 private:
     static core::IOdometryEstimator::SharedPtr createFastLio(
         rclcpp::Node* node, const Eigen::Isometry3d& T_base_lidar,
-        const Eigen::Isometry3d& T_base_imu, core::IMapBuilder::SharedPtr map_builder);
+        const Eigen::Isometry3d& T_base_imu,
+        std::shared_ptr<map_builder::IkdTreeLocalMapBuilder> local_map);
 };
 
 }  // namespace lio_slam_shaw::factory

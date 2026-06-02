@@ -10,7 +10,7 @@ core::ILioInitializer::SharedPtr LioInitializerFactory::create(
     // For now we only have one implementation, but this factory allows us to
     // easily add more in the future and select via ROS params.
     scan_matcher::IkdTreeScanMatcherParams scan_matcher_params;
-    map_builder::IkdTreeMapBuilderParams map_builder_params;
+    map_builder::IkdTreeLocalMapBuilderParams map_builder_params;
     initializer::SfmLioInitializerParams sfm_init_params;
     Eigen::Isometry3d T_imu_lidar = T_base_imu.inverse() * T_base_lidar;
 
@@ -36,10 +36,6 @@ core::ILioInitializer::SharedPtr LioInitializerFactory::create(
     scan_matcher_params.rot_regularization_sigma =
         node->declare_parameter<double>("initializer.scan_matcher.rot_regularization_sigma", 0.0);
 
-    map_builder_params.keyframe_distance_threshold =
-        node->declare_parameter<double>("initializer.map_builder.keyframe_distance_threshold", 1.0);
-    map_builder_params.keyframe_angle_threshold =
-        node->declare_parameter<double>("initializer.map_builder.keyframe_angle_threshold", 0.2);
     map_builder_params.ikd_delete_param = static_cast<float>(
         node->declare_parameter<double>("initializer.map_builder.ikd_delete_param", 0.5));
     map_builder_params.ikd_balance_param = static_cast<float>(

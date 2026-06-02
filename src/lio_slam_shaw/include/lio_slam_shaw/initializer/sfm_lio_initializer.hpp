@@ -2,12 +2,14 @@
 #define LIO_SLAM_SHAW__INITIALIZER__SFM_LIO_INITIALIZER_HPP_
 
 #include <Eigen/Dense>
+#include <atomic>
 #include <deque>
 #include <memory>
+#include <mutex>
 #include <vector>
 
 #include "lio_slam_shaw/core/i_lio_initializer.hpp"
-#include "lio_slam_shaw/map_builder/ikd_tree_map_builder.hpp"
+#include "lio_slam_shaw/map_builder/ikd_tree_local_map_builder.hpp"
 #include "lio_slam_shaw/scan_matcher/ikd_tree_scan_matcher.hpp"
 
 namespace lio_slam_shaw::initializer {
@@ -47,7 +49,7 @@ public:
     using SharedPtr = std::shared_ptr<SfmLioInitializer>;
 
     explicit SfmLioInitializer(const scan_matcher::IkdTreeScanMatcherParams& scan_matcher_params,
-                               const map_builder::IkdTreeMapBuilderParams& map_builder_params,
+                               const map_builder::IkdTreeLocalMapBuilderParams& map_builder_params,
                                const Eigen::Isometry3d& T_imu_lidar,
                                const SfmLioInitializerParams& params = {});
     ~SfmLioInitializer() override = default;
@@ -104,18 +106,18 @@ private:
 
     // --- State ---
     SfmLioInitializerParams params_;
-    map_builder::IkdTreeMapBuilderParams map_builder_params_;
+    map_builder::IkdTreeLocalMapBuilderParams map_builder_params_;
     scan_matcher::IkdTreeScanMatcherParams scan_matcher_params_;
-    std::shared_ptr<map_builder::IkdTreeMapBuilder> map_builder_;
+    std::shared_ptr<map_builder::IkdTreeLocalMapBuilder> map_builder_;
     std::shared_ptr<scan_matcher::IkdTreeScanMatcher> scan_matcher_;
     Eigen::Isometry3d T_imu_lidar_;
 
     // Buffered raw scans (before scan matching)
-
+    mutable std::mutex scan_buf_mutex_;
     std::vector<BufferedScan> scan_buf_;
+    std::atomic<bool> initializing_{false};
 
     // Buffered scan frames
-
     std::vector<ScanFrame> frames_;
 
     // IMU buffer: all IMU samples since the start

@@ -53,13 +53,13 @@ static Eigen::Matrix3d expSO3(const Eigen::Vector3d& phi) {
 // ===========================================================================
 SfmLioInitializer::SfmLioInitializer(
     const scan_matcher::IkdTreeScanMatcherParams& scan_matcher_params,
-    const map_builder::IkdTreeMapBuilderParams& map_builder_params,
+    const map_builder::IkdTreeLocalMapBuilderParams& map_builder_params,
     const Eigen::Isometry3d& T_imu_lidar, const SfmLioInitializerParams& params)
     : params_(params),
       map_builder_params_(map_builder_params),
       scan_matcher_params_(scan_matcher_params),
       T_imu_lidar_(T_imu_lidar) {
-    map_builder_ = std::make_shared<map_builder::IkdTreeMapBuilder>(map_builder_params);
+    map_builder_ = std::make_shared<map_builder::IkdTreeLocalMapBuilder>(map_builder_params);
     scan_matcher_ =
         std::make_shared<scan_matcher::IkdTreeScanMatcher>(map_builder_, scan_matcher_params);
     scan_matcher_->setLidarExtrinsics(T_imu_lidar_);
@@ -77,7 +77,7 @@ void SfmLioInitializer::addImu(const core::ImuData& imu) {
 // addScan — buffer only (O(1) with downsample)
 // ===========================================================================
 void SfmLioInitializer::addScan(const core::LidarData& lidar) {
-    if (ready_) return;
+    if (ready_ || initializing_.load(std::memory_order_relaxed)) return;
     if (!lidar.cloud || lidar.cloud->empty()) return;
 
     // Downsample raw cloud
@@ -110,9 +110,11 @@ bool SfmLioInitializer::tryInitialize() {
     if (ready_) return true;
     if (static_cast<int>(scan_buf_.size()) < params_.min_init_scans) return false;
 
-    std::clog << "[SfmInit] Running batch SFM on " << scan_buf_.size() << " scans...\n";
+    initializing_.store(true, std::memory_order_relaxed);
+    const size_t n_scans = scan_buf_.size();
+    std::clog << "[SfmInit] Running batch SFM on " << n_scans << " scans...\n";
 
-    for (size_t i = 0; i < scan_buf_.size(); ++i) {
+    for (size_t i = 0; i < n_scans; ++i) {
         const auto& buf = scan_buf_[i];
         const auto& scan_time = buf.time;
 
@@ -180,6 +182,7 @@ bool SfmLioInitializer::tryInitialize() {
     }
 
     std::clog << "[SfmInit] Linear alignment failed\n";
+    initializing_.store(false, std::memory_order_relaxed);
     return false;
 }
 
@@ -569,7 +572,7 @@ void SfmLioInitializer::clearScans() {
     scan_buf_.clear();
     frames_.clear();
     // Reset the map so the next round starts from a blank slate
-    map_builder_ = std::make_shared<map_builder::IkdTreeMapBuilder>(map_builder_params_);
+    map_builder_ = std::make_shared<map_builder::IkdTreeLocalMapBuilder>(map_builder_params_);
     scan_matcher_ =
         std::make_shared<scan_matcher::IkdTreeScanMatcher>(map_builder_, scan_matcher_params_);
     scan_matcher_->setLidarExtrinsics(T_imu_lidar_);

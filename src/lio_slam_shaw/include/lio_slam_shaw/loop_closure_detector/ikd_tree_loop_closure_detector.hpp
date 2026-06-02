@@ -5,7 +5,7 @@
 #include <optional>
 
 #include "lio_slam_shaw/core/i_loop_closure_detector.hpp"
-#include "lio_slam_shaw/map_builder/ikd_tree_map_builder.hpp"
+#include "lio_slam_shaw/map_builder/ikd_tree_local_map_builder.hpp"
 #include "lio_slam_shaw/scan_matcher/ikd_tree_scan_matcher.hpp"
 
 namespace lio_slam_shaw {
@@ -24,8 +24,9 @@ public:
                                const IkdTreeLoopClosureDetectorParams& loop_closure_params);
     ~IkdTreeLoopClosureDetector() override = default;
 
-    std::optional<core::LoopConstraint> detect(const core::Keyframe::SharedPtr& current_keyframe,
-                                               core::IMapBuilder::SharedPtr map_builder) override;
+    std::optional<core::LoopConstraint> detect(
+        const core::Keyframe::SharedPtr& current_keyframe,
+        core::IGlobalMapBuilder::SharedPtr global_map) override;
 
 private:
     std::optional<core::Keyframe::SharedPtr> findCandidate(
@@ -36,7 +37,7 @@ private:
                        const core::Keyframe::SharedPtr& candidate,
                        const std::vector<core::Keyframe::SharedPtr>& all_keyframes) const;
 
-    std::shared_ptr<map_builder::IkdTreeMapBuilder> map_builder_;
+    std::shared_ptr<map_builder::IkdTreeLocalMapBuilder> local_map_;
     std::shared_ptr<scan_matcher::IkdTreeScanMatcher> scan_matcher_;
     IkdTreeLoopClosureDetectorParams params_;
 };

@@ -41,10 +41,6 @@ public:
     /// Apply the result from LIO initialisation (gravity, velocity, pose, biases)
     /// to the internal state.  Called once when the initialiser becomes ready.
     virtual void setInitialState(const LioInitResult& init_result) = 0;
-
-    // Called by BackEnd after loop closure / map optimization to keep odom
-    // frame consistent with the global map frame.
-    virtual void setMapToOdomTransform(const Eigen::Isometry3d& T_map_odom) = 0;
 };
 
 }  // namespace lio_slam_shaw::core

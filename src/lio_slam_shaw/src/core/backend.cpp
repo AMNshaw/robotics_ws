@@ -2,16 +2,20 @@
 
 namespace lio_slam_shaw::core {
 
-BackEnd::BackEnd(IMapBuilder::SharedPtr map_builder, IMapOptimizer::SharedPtr map_optimizer,
+BackEnd::BackEnd(IGlobalMapBuilder::SharedPtr global_map, IMapOptimizer::SharedPtr map_optimizer,
                  ILoopClosureDetector::SharedPtr loop_closure_detector)
-    : map_builder_(std::move(map_builder)),
+    : global_map_(std::move(global_map)),
       map_optimizer_(std::move(map_optimizer)),
       loop_closure_detector_(std::move(loop_closure_detector)) {}
+
+std::optional<Keyframe::SharedPtr> BackEnd::tryAddKeyframe(const LidarFrame::SharedPtr& frame) {
+    return global_map_->addKeyFrame(frame);
+}
 
 void BackEnd::processKeyframe(const Keyframe::SharedPtr& keyframe) {
     map_optimizer_->addKeyframe(keyframe->id, keyframe->matched_result);
 
-    auto loop_opt = loop_closure_detector_->detect(keyframe, map_builder_);
+    auto loop_opt = loop_closure_detector_->detect(keyframe, global_map_);
     if (!loop_opt.has_value()) return;
 
     map_optimizer_->addLoopConstraint(loop_opt.value());
@@ -32,13 +36,11 @@ bool BackEnd::updateGlobalCorrection() {
     T_map_odom_ = pending_correction_.value() * T_map_odom_;
     pending_correction_ = std::nullopt;
 
-    map_builder_->updateKeyframePoses(pending_corrected_poses_);
+    global_map_->updateKeyframePoses(pending_corrected_poses_);
     pending_corrected_poses_.clear();
     return true;
 }
 
 Eigen::Isometry3d BackEnd::getGlobalCorrection() const { return T_map_odom_; }
-
-void BackEnd::updateMap() { map_builder_->updateMap(); }
 
 }  // namespace lio_slam_shaw::core

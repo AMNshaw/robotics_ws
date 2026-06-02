@@ -9,15 +9,16 @@ IkdTreeLoopClosureDetector::IkdTreeLoopClosureDetector(
     const scan_matcher::IkdTreeScanMatcherParams& scan_matcher_params,
     const IkdTreeLoopClosureDetectorParams& loop_closure_params)
     : params_(loop_closure_params) {
-    map_builder_ =
-        std::make_shared<map_builder::IkdTreeMapBuilder>(map_builder::IkdTreeMapBuilderParams{});
+    local_map_ = std::make_shared<map_builder::IkdTreeLocalMapBuilder>(
+        map_builder::IkdTreeLocalMapBuilderParams{});
     scan_matcher_ =
-        std::make_shared<scan_matcher::IkdTreeScanMatcher>(map_builder_, scan_matcher_params);
+        std::make_shared<scan_matcher::IkdTreeScanMatcher>(local_map_, scan_matcher_params);
 }
 
 std::optional<core::LoopConstraint> IkdTreeLoopClosureDetector::detect(
-    const core::Keyframe::SharedPtr& current_keyframe, core::IMapBuilder::SharedPtr map_builder) {
-    const auto all_keyframes = map_builder->getAllKeyframes();
+    const core::Keyframe::SharedPtr& current_keyframe,
+    core::IGlobalMapBuilder::SharedPtr global_map) {
+    const auto all_keyframes = global_map->getAllKeyframes();
     if (all_keyframes.size() < 2) return std::nullopt;
 
     const auto candidate_opt = findCandidate(current_keyframe, all_keyframes);
@@ -75,7 +76,7 @@ std::optional<core::Keyframe::SharedPtr> IkdTreeLoopClosureDetector::findCandida
 void IkdTreeLoopClosureDetector::buildLocalMap(
     const core::Keyframe::SharedPtr& current_keyframe, const core::Keyframe::SharedPtr& candidate,
     const std::vector<core::Keyframe::SharedPtr>& all_keyframes) const {
-    map_builder_->clearMap();
+    local_map_->clearMap();
     const Eigen::Vector3d cand_pos = candidate->pose.translation();
 
     std::vector<std::pair<double, core::Keyframe::SharedPtr>> dist_kf;
@@ -97,7 +98,7 @@ void IkdTreeLoopClosureDetector::buildLocalMap(
     for (int i = 0; i < n; ++i) {
         const auto& kf = dist_kf[i].second;
         if (!kf->cloud_body || kf->cloud_body->empty()) continue;
-        map_builder_->addKeyFrame(kf);
+        local_map_->addKeyFrame(kf);
     }
 }
 }  // namespace lio_slam_shaw

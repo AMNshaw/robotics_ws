@@ -13,7 +13,6 @@
 
 #include "lio_slam_shaw/core/backend.hpp"
 #include "lio_slam_shaw/core/frontend.hpp"
-#include "lio_slam_shaw/core/i_map_builder.hpp"
 #include "lio_slam_shaw/core/sensor_data_types.hpp"
 
 namespace lio_slam_shaw::core {
@@ -33,8 +32,7 @@ public:
     using OdometryCallback = std::function<void(const NavState& odom_state)>;
     using VisualizationCallback = std::function<void(const VisualizationData& viz_data)>;
 
-    explicit SlamProcessor(FrontEnd::SharedPtr frontend, BackEnd::SharedPtr backend,
-                           IMapBuilder::SharedPtr map_builder);
+    explicit SlamProcessor(FrontEnd::SharedPtr frontend, BackEnd::SharedPtr backend);
     ~SlamProcessor();
     SlamProcessor(const SlamProcessor&) = delete;
     SlamProcessor& operator=(const SlamProcessor&) = delete;
@@ -54,7 +52,6 @@ private:
 
     FrontEnd::SharedPtr front_end_;
     BackEnd::SharedPtr back_end_;
-    IMapBuilder::SharedPtr map_builder_;
 
     std::atomic<bool> run_{false};
     std::thread frontend_thread_;

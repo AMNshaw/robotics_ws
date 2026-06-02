@@ -6,21 +6,21 @@ namespace lio_slam_shaw::factory {
 
 core::IOdometryEstimator::SharedPtr OdometryEstimatorFactory::create(
     rclcpp::Node* node, const Eigen::Isometry3d& T_base_lidar, const Eigen::Isometry3d& T_base_imu,
-    core::IMapBuilder::SharedPtr map_builder) {
+    std::shared_ptr<map_builder::IkdTreeLocalMapBuilder> local_map) {
     std::string type = node->declare_parameter<std::string>("odometry_estimator.type", "fast_lio");
 
     if (type == "fast_lio") {
-        return createFastLio(node, T_base_lidar, T_base_imu, map_builder);
+        return createFastLio(node, T_base_lidar, T_base_imu, local_map);
     }
 
     RCLCPP_WARN(node->get_logger(),
                 "Unknown odometry_estimator type '%s', falling back to fast_lio.", type.c_str());
-    return createFastLio(node, T_base_lidar, T_base_imu, map_builder);
+    return createFastLio(node, T_base_lidar, T_base_imu, local_map);
 }
 
 core::IOdometryEstimator::SharedPtr OdometryEstimatorFactory::createFastLio(
     rclcpp::Node* node, const Eigen::Isometry3d& T_base_lidar, const Eigen::Isometry3d& T_base_imu,
-    core::IMapBuilder::SharedPtr map_builder) {
+    std::shared_ptr<map_builder::IkdTreeLocalMapBuilder> local_map) {
     odometry_estimator::FastLioOdometryParams params;
 
     params.acc_noise =
@@ -52,8 +52,8 @@ core::IOdometryEstimator::SharedPtr OdometryEstimatorFactory::createFastLio(
     params.max_point_to_plane_distance = node->declare_parameter<double>(
         "odometry_estimator.max_point_to_plane_distance", params.max_point_to_plane_distance);
 
-    auto estimator = std::make_shared<odometry_estimator::FastLioOdometry>(
-        map_builder, T_base_lidar, T_base_imu, params);
+    auto estimator = std::make_shared<odometry_estimator::FastLioOdometry>(local_map, T_base_lidar,
+                                                                           T_base_imu, params);
 
     RCLCPP_INFO(node->get_logger(), "Created FastLioOdometry estimator");
     return estimator;

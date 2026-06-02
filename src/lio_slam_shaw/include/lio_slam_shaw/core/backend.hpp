@@ -4,8 +4,8 @@
 #include <optional>
 #include <utility>
 
+#include "lio_slam_shaw/core/i_global_map_builder.hpp"
 #include "lio_slam_shaw/core/i_loop_closure_detector.hpp"
-#include "lio_slam_shaw/core/i_map_builder.hpp"
 #include "lio_slam_shaw/core/i_map_optimizer.hpp"
 #include "lio_slam_shaw/core/lidar_frame.hpp"
 
@@ -16,19 +16,20 @@ public:
     using SharedPtr = std::shared_ptr<BackEnd>;
     using ConstSharedPtr = std::shared_ptr<const BackEnd>;
 
-    BackEnd(IMapBuilder::SharedPtr map_builder, IMapOptimizer::SharedPtr map_optimizer,
+    BackEnd(IGlobalMapBuilder::SharedPtr global_map, IMapOptimizer::SharedPtr map_optimizer,
             ILoopClosureDetector::SharedPtr loop_closure_detector);
     ~BackEnd() = default;
+
+    /// Check if a frame qualifies as a keyframe. Returns the keyframe if yes.
+    std::optional<Keyframe::SharedPtr> tryAddKeyframe(const LidarFrame::SharedPtr& frame);
 
     void processKeyframe(const Keyframe::SharedPtr& frame);
 
     bool updateGlobalCorrection();
     Eigen::Isometry3d getGlobalCorrection() const;
 
-    void updateMap();
-
 private:
-    IMapBuilder::SharedPtr map_builder_;
+    IGlobalMapBuilder::SharedPtr global_map_;
     IMapOptimizer::SharedPtr map_optimizer_;
     ILoopClosureDetector::SharedPtr loop_closure_detector_;
 

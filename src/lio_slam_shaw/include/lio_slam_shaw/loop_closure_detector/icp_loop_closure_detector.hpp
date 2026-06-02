@@ -27,8 +27,9 @@ public:
     explicit IcpLoopClosureDetector(const IcpLoopClosureDetectorParams& params);
     ~IcpLoopClosureDetector() override = default;
 
-    std::optional<core::LoopConstraint> detect(const core::Keyframe::SharedPtr& current_keyframe,
-                                               core::IMapBuilder::SharedPtr map_builder) override;
+    std::optional<core::LoopConstraint> detect(
+        const core::Keyframe::SharedPtr& current_keyframe,
+        core::IGlobalMapBuilder::SharedPtr global_map) override;
 
 private:
     std::optional<core::Keyframe::SharedPtr> findCandidate(

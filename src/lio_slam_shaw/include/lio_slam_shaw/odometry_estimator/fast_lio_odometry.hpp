@@ -6,9 +6,8 @@
 #include <memory>
 #include <mutex>
 
-#include "lio_slam_shaw/core/i_map_builder.hpp"
 #include "lio_slam_shaw/core/i_odometry_estimator.hpp"
-#include "lio_slam_shaw/map_builder/ikd_tree_map_builder.hpp"
+#include "lio_slam_shaw/map_builder/ikd_tree_local_map_builder.hpp"
 
 namespace lio_slam_shaw::odometry_estimator {
 
@@ -51,8 +50,9 @@ class FastLioOdometry : public core::IOdometryEstimator {
 public:
     using SharedPtr = std::shared_ptr<FastLioOdometry>;
 
-    FastLioOdometry(core::IMapBuilder::SharedPtr map_builder, const Eigen::Isometry3d& T_base_lidar,
-                    const Eigen::Isometry3d& T_base_imu, const FastLioOdometryParams& params = {});
+    FastLioOdometry(std::shared_ptr<map_builder::IkdTreeLocalMapBuilder> local_map,
+                    const Eigen::Isometry3d& T_base_lidar, const Eigen::Isometry3d& T_base_imu,
+                    const FastLioOdometryParams& params = {});
     ~FastLioOdometry() override = default;
 
     // IOdometryEstimator interface
@@ -62,7 +62,6 @@ public:
     core::NavState getLatestState() const override;
     std::vector<core::NavState> getNavStateQueueSnapshot() const override;
     void setInitialState(const core::LioInitResult& init_result) override;
-    void setMapToOdomTransform(const Eigen::Isometry3d& T_map_odom) override;
 
 private:
     struct IeskfState {
@@ -129,13 +128,13 @@ private:
     IeskfState iteratedUpdate(const IeskfState& propagated,
                               const core::FeatureSet& features);  // NOLINT
 
-    NearestPlaneResult fitPlane(const map_builder::IkdTreeReadSession::PointVector& neighbors,
+    NearestPlaneResult fitPlane(const map_builder::IkdTreeLocalReadSession::PointVector& neighbors,
                                 const Eigen::Vector3d& query_point_in_map) const;
 
     // Transform pt_lidar to the map frame using T_world_lidar, search K nearest neighbours in the
     // ikd-tree, and fit a plane.  The caller passes an open IkdTreeReadSession so the read lock is
     // held ONCE for the whole iEKF Phase-1 batch instead of being re-acquired per point.
-    NearestPlaneResult queryNearestPlane(const map_builder::IkdTreeReadSession& session,
+    NearestPlaneResult queryNearestPlane(const map_builder::IkdTreeLocalReadSession& session,
                                          const core::PointXYZIRT& pt_lidar,
                                          const Eigen::Isometry3d& T_world_lidar) const;
 
@@ -147,9 +146,8 @@ private:
                                      const Eigen::Matrix3d& R_map_body) const;
 
     FastLioOdometryParams params_;
-    std::shared_ptr<map_builder::IkdTreeMapBuilder> map_builder_;
+    std::shared_ptr<map_builder::IkdTreeLocalMapBuilder> map_builder_;
 
-    Eigen::Isometry3d T_map_odom_ = Eigen::Isometry3d::Identity();
     Eigen::Isometry3d T_base_lidar_ = Eigen::Isometry3d::Identity();
     Eigen::Isometry3d T_imu_lidar_ =
         Eigen::Isometry3d::Identity();  // cached T_base_imu^-1 * T_base_lidar

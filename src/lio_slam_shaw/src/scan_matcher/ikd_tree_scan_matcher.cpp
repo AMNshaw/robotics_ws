@@ -7,11 +7,10 @@
 
 namespace lio_slam_shaw::scan_matcher {
 
-IkdTreeScanMatcher::IkdTreeScanMatcher(core::IMapBuilder::SharedPtr map_builder,
-                                       const IkdTreeScanMatcherParams& params)
-    : map_builder_(std::move(map_builder)), params_(params) {
-    ikd_map_builder_ =
-        std::dynamic_pointer_cast<map_builder::IkdTreeMapBuilder>(map_builder_);
+IkdTreeScanMatcher::IkdTreeScanMatcher(
+    std::shared_ptr<map_builder::IkdTreeLocalMapBuilder> local_map,
+    const IkdTreeScanMatcherParams& params)
+    : local_map_(std::move(local_map)), params_(params) {
     T_base_lidar_ = params_.T_base_lidar;
 }
 
@@ -42,7 +41,7 @@ core::ScanMatchResult IkdTreeScanMatcher::match(const core::FeatureSet& features
         nearest_planes.resize(cloud->size());
 
         // Open a single read-session for the entire parallel KNN batch of this iteration.
-        const map_builder::IkdTreeReadSession knn_session(*ikd_map_builder_);
+        const map_builder::IkdTreeLocalReadSession knn_session(*local_map_);
 
         const int n_pts = static_cast<int>(cloud->size());
 #pragma omp parallel for schedule(static) num_threads(4)
@@ -59,16 +58,16 @@ core::ScanMatchResult IkdTreeScanMatcher::match(const core::FeatureSet& features
                 static_cast<float>(R_map_lidar(2, 0) * pt.x + R_map_lidar(2, 1) * pt.y +
                                    R_map_lidar(2, 2) * pt.z + t_map_lidar.z());
 
-            const map_builder::IkdTreeReadSession::PointVector* neighbors_ptr = nullptr;
+            const map_builder::IkdTreeLocalReadSession::PointVector* neighbors_ptr = nullptr;
             const std::vector<float>* distances_ptr = nullptr;
             if (!knn_session.searchKNearest(query_map_pt, params_.k_neighbors,
                                             params_.max_search_dist, neighbors_ptr, distances_ptr))
                 continue;
 
             if (static_cast<int>(neighbors_ptr->size()) >= params_.min_plane_points) {
-                nearest_planes[i] = fitPlane(
-                    *neighbors_ptr,
-                    Eigen::Vector3d(query_map_pt.x, query_map_pt.y, query_map_pt.z));
+                nearest_planes[i] =
+                    fitPlane(*neighbors_ptr,
+                             Eigen::Vector3d(query_map_pt.x, query_map_pt.y, query_map_pt.z));
             } else {
                 nearest_planes[i].valid = false;
             }
@@ -164,15 +163,15 @@ core::ScanMatchResult IkdTreeScanMatcher::match(const core::FeatureSet& features
         result.fitness_score = 0.0;
     }
 
-    std::clog << "[ScanMatcher] Result: " << result.pose.translation().transpose()
-              << " valid_points=" << n_valid_final << " degenerate=" << result.is_degenerate
-              << std::endl;
+    if (result.is_degenerate) {
+        std::clog << "[ScanMatcher] DEGENERATE valid=" << n_valid_final << '\n';
+    }
 
     return result;
 }
 
 NearestPlaneResult IkdTreeScanMatcher::fitPlane(
-    const map_builder::IkdTreeReadSession::PointVector& neighbors,
+    const map_builder::IkdTreeLocalReadSession::PointVector& neighbors,
     const Eigen::Vector3d& query_point_in_map) const {
     Eigen::Vector3d centroid = Eigen::Vector3d::Zero();
     for (const auto& p : neighbors) centroid += Eigen::Vector3d(p.x, p.y, p.z);

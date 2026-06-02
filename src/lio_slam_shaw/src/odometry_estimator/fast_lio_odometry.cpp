@@ -10,6 +10,8 @@
 #include <numeric>
 #include <stdexcept>
 
+#include "lio_slam_shaw/utils/tiktok.hpp"
+
 namespace lio_slam_shaw::odometry_estimator {
 
 static inline Eigen::Matrix3d skew(const Eigen::Vector3d& v) {
@@ -30,14 +32,13 @@ static core::ImuData interpolateImu(const core::ImuData& before, const core::Imu
     return interp;
 }
 
-FastLioOdometry::FastLioOdometry(core::IMapBuilder::SharedPtr map_builder,
+FastLioOdometry::FastLioOdometry(std::shared_ptr<map_builder::IkdTreeLocalMapBuilder> local_map,
                                  const Eigen::Isometry3d& T_base_lidar,
                                  const Eigen::Isometry3d& T_base_imu,
                                  const FastLioOdometryParams& params)
-    : params_(params), T_base_lidar_(T_base_lidar) {
-    map_builder_ = std::dynamic_pointer_cast<map_builder::IkdTreeMapBuilder>(map_builder);
+    : params_(params), map_builder_(std::move(local_map)), T_base_lidar_(T_base_lidar) {
     if (!map_builder_) {
-        throw std::invalid_argument("FastLioOdometry requires an IkdTreeMapBuilder instance");
+        throw std::invalid_argument("FastLioOdometry requires an IkdTreeLocalMapBuilder instance");
     }
     T_imu_lidar_ = T_base_imu.inverse() * T_base_lidar;
     prev_scan_time_ = core::Timestamp::min();
@@ -320,13 +321,9 @@ core::OdometryResult FastLioOdometry::estimateWithFeatures(const core::FeatureSe
         }
         predicted_states_.insert(predicted_states_.begin(), reproped_states.begin(),
                                  reproped_states.end());
-        const double t_reprop_ms = elapsedMs();
 
         // Single summary line
-        std::clog << "[FastLIO] iter=" << t_iter_ms << "ms reprop=" << t_reprop_ms
-                  << "ms(n=" << reprop_count << ")"
-                  << " p=" << reprop_start.p.transpose() << " b_a=" << reprop_start.b_a.transpose()
-                  << '\n';
+        std::clog << "[FastLIO] " << t_iter_ms << "ms\n";
     }
 
     prev_scan_time_ = lidar_time_start;
@@ -336,27 +333,23 @@ core::OdometryResult FastLioOdometry::estimateWithFeatures(const core::FeatureSe
     core::OdometryResult result;
     {
         std::lock_guard<std::mutex> lock(committed_state_mutex_);
-        Eigen::Isometry3d pose_map = Eigen::Isometry3d::Identity();
-        pose_map.linear() = committed_state_.R;
-        pose_map.translation() = committed_state_.p;
+        Eigen::Isometry3d pose = Eigen::Isometry3d::Identity();
+        pose.linear() = committed_state_.R;
+        pose.translation() = committed_state_.p;
 
-        core::ScanMatchResult matched_in_map;
-        matched_in_map.pose = pose_map;
-        matched_in_map.is_converged = true;
-
-        core::ScanMatchResult matched_in_odom;
-        matched_in_odom.pose = T_map_odom_.inverse() * pose_map;
-        matched_in_odom.is_converged = true;
+        core::ScanMatchResult matched;
+        matched.pose = pose;
+        matched.is_converged = true;
 
         core::NavState nav;
         nav.timestamp = lidar_time_start;
-        nav.pose = matched_in_odom.pose;
+        nav.pose = pose;
         nav.linear_vel = committed_state_.v;
         nav.angular_vel = committed_state_.angular_vel;  // ω = gyr - b_g from last IMU step
         nav.acc_bias = committed_state_.b_a;
         nav.gyr_bias = committed_state_.b_g;
 
-        result = core::OdometryResult{matched_in_map, matched_in_odom, nav};
+        result = core::OdometryResult{matched, matched, nav};
     }
     return result;
 }
@@ -375,18 +368,7 @@ FastLioOdometry::IeskfState FastLioOdometry::iteratedUpdate(const IeskfState& pr
         return propagated;
     }
 
-    // Convert propagated state to map frame; work in map frame throughout.
-    IeskfState propagated_map = propagated;
-    {
-        Eigen::Isometry3d T_odom = Eigen::Isometry3d::Identity();
-        T_odom.linear() = propagated_map.R;
-        T_odom.translation() = propagated_map.p;
-        const Eigen::Isometry3d T_world = T_map_odom_ * T_odom;
-        propagated_map.R = T_world.linear();
-        propagated_map.p = T_world.translation();
-    }
-
-    IeskfState result = propagated_map;
+    IeskfState result = propagated;
     Eigen::Matrix<double, kStateDim, kStateDim> P_bar = propagated.P;
     if (!params_.estimate_gravity) {
         P_bar.block<kStateDim, 2>(0, 15).setZero();
@@ -402,14 +384,17 @@ FastLioOdometry::IeskfState FastLioOdometry::iteratedUpdate(const IeskfState& pr
 
     // Open one read-session over the ikd-tree for the whole iter loop.  All KNN queries in
     // Phase 1 (parallel over scan points × max_iterations) reuse this single lock instead of
-    // re-acquiring shared_mutex atomics per query.  IkdTreeReadSession is a sibling class of
-    // IkdTreeMapBuilder (friend-granted access); constructing it directly avoids coupling the
+    // re-acquiring shared_mutex atomics per query.  IkdTreeLocalReadSession is a friend class of
+    // IkdTreeLocalMapBuilder; constructing it directly avoids coupling the
     // builder interface to the "open session" concept.
-    const map_builder::IkdTreeReadSession knn_session(*map_builder_);
+    const map_builder::IkdTreeLocalReadSession knn_session(*map_builder_);
 
-    using Clock = std::chrono::steady_clock;
+    double knn_total_ms = 0.0;
+    double solve_total_ms = 0.0;
+    int actual_iters = 0;
+
     for (int iter = 0; iter < params_.max_iterations; ++iter) {
-        const auto t_iter_start = Clock::now();
+        const auto t_iter_start = std::chrono::steady_clock::now();
         const Eigen::Isometry3d T_world_lidar = [&] {
             Eigen::Isometry3d T;
             T.linear() = result.R;
@@ -418,20 +403,20 @@ FastLioOdometry::IeskfState FastLioOdometry::iteratedUpdate(const IeskfState& pr
         }();
         const Eigen::Vector3d t_map_lidar = T_world_lidar.translation();
 
-        // --- Prior offset: dx_prior = result ⊞⁻¹ propagated_map ---
+        // --- Prior offset: dx_prior = result ⊞⁻¹ propagated ---
         Eigen::Matrix<double, kStateDim, 1> dx_prior = Eigen::Matrix<double, kStateDim, 1>::Zero();
-        dx_prior.segment<3>(0) = result.p - propagated_map.p;
-        dx_prior.segment<3>(3) = result.v - propagated_map.v;
+        dx_prior.segment<3>(0) = result.p - propagated.p;
+        dx_prior.segment<3>(3) = result.v - propagated.v;
         {
-            const Eigen::AngleAxisd aa(propagated_map.R.transpose() * result.R);
+            const Eigen::AngleAxisd aa(propagated.R.transpose() * result.R);
             dx_prior.segment<3>(6) = aa.angle() < 1e-10 ? Eigen::Vector3d::Zero()
                                                         : Eigen::Vector3d(aa.angle() * aa.axis());
         }
-        dx_prior.segment<3>(9) = result.b_a - propagated_map.b_a;
-        dx_prior.segment<3>(12) = result.b_g - propagated_map.b_g;
+        dx_prior.segment<3>(9) = result.b_a - propagated.b_a;
+        dx_prior.segment<3>(12) = result.b_g - propagated.b_g;
         {
-            const Eigen::Vector3d dg_3d = result.gravity - propagated_map.gravity;
-            dx_prior.segment<2>(15) = propagated_map.gravity_basis.transpose() * dg_3d;
+            const Eigen::Vector3d dg_3d = result.gravity - propagated.gravity;
+            dx_prior.segment<2>(15) = propagated.gravity_basis.transpose() * dg_3d;
         }
         if (!params_.estimate_gravity) {
             dx_prior.segment<2>(15).setZero();
@@ -453,9 +438,9 @@ FastLioOdometry::IeskfState FastLioOdometry::iteratedUpdate(const IeskfState& pr
             } else {
                 const Eigen::Matrix3d phi_x = skew(phi);
                 const Eigen::Matrix3d phi_x2 = phi_x * phi_x;
-                const double c2 = 1.0 / (phi_norm * phi_norm) -
-                                  (1.0 + std::cos(phi_norm)) /
-                                      (2.0 * phi_norm * std::sin(phi_norm));
+                const double c2 =
+                    1.0 / (phi_norm * phi_norm) -
+                    (1.0 + std::cos(phi_norm)) / (2.0 * phi_norm * std::sin(phi_norm));
                 Jr_inv = Eigen::Matrix3d::Identity() + 0.5 * phi_x + c2 * phi_x2;
             }
             const Eigen::Matrix3d Jr_inv_T = Jr_inv.transpose();
@@ -517,8 +502,8 @@ FastLioOdometry::IeskfState FastLioOdometry::iteratedUpdate(const IeskfState& pr
             sum_r2 += accums[t].sum_r2;
         }
         const double rms_residual = valid_num > 0 ? std::sqrt(sum_r2 / valid_num) : 0.0;
-        const auto t_knn = Clock::now();
-        (void)t_knn;
+        const auto t_knn_end = std::chrono::steady_clock::now();
+        knn_total_ms += std::chrono::duration<double, std::milli>(t_knn_end - t_iter_start).count();
 
         if (valid_num < 6) break;  // under-constrained
 
@@ -528,15 +513,14 @@ FastLioOdometry::IeskfState FastLioOdometry::iteratedUpdate(const IeskfState& pr
             std::max(params_.measurement_noise * params_.measurement_noise, 1e-12);
         const double r_inv = 1.0 / measurement_var;
         const Eigen::Matrix<double, kStateDim, kStateDim> HtRinvH = r_inv * HtH;
-        const Eigen::Matrix<double, kStateDim, kStateDim> P_inv_plus_HtRinvH =
-            P_iter_inv + HtRinvH;
+        const Eigen::Matrix<double, kStateDim, kStateDim> P_inv_plus_HtRinvH = P_iter_inv + HtRinvH;
         const Eigen::Matrix<double, kStateDim, kStateDim> gain_lhs =
             P_inv_plus_HtRinvH.ldlt().solve(
                 Eigen::Matrix<double, kStateDim, kStateDim>::Identity());
         const Eigen::Matrix<double, kStateDim, 1> z = r_inv * (Htr + HtH * dx_prior);
         const Eigen::Matrix<double, kStateDim, 1> dx_total = gain_lhs * z;
 
-        result = propagated_map;  // reset to prior
+        result = propagated;  // reset to prior
         result.p += dx_total.segment<3>(0);
         result.v += dx_total.segment<3>(3);
         result.b_a += dx_total.segment<3>(9);
@@ -548,12 +532,11 @@ FastLioOdometry::IeskfState FastLioOdometry::iteratedUpdate(const IeskfState& pr
         if (params_.estimate_gravity) {
             const Eigen::Vector2d dg = dx_total.segment<2>(15);
             result.gravity =
-                (propagated_map.gravity + propagated_map.gravity_basis * dg).normalized() *
-                kGravity;
+                (propagated.gravity + propagated.gravity_basis * dg).normalized() * kGravity;
             result.updateGravityBasis();
         } else {
-            result.gravity = propagated_map.gravity;
-            result.gravity_basis = propagated_map.gravity_basis;
+            result.gravity = propagated.gravity;
+            result.gravity_basis = propagated.gravity_basis;
         }
 
         const Eigen::Vector3d dtheta = dx_total.segment<3>(6);
@@ -561,7 +544,7 @@ FastLioOdometry::IeskfState FastLioOdometry::iteratedUpdate(const IeskfState& pr
         const Eigen::Matrix3d dR =
             angle < 1e-10 ? (Eigen::Matrix3d::Identity() + skew(dtheta))
                           : Eigen::AngleAxisd(angle, dtheta / angle).toRotationMatrix();
-        result.R = propagated_map.R * dR;
+        result.R = propagated.R * dR;
 
         // Save for final P update: gain_lhs = (P_iter^{-1} + H^T R^{-1} H)^{-1}
         // Apply SO3 correction to the posterior covariance (rotation rows/columns)
@@ -576,9 +559,9 @@ FastLioOdometry::IeskfState FastLioOdometry::iteratedUpdate(const IeskfState& pr
             } else {
                 const Eigen::Matrix3d phi_x = skew(dtheta_post);
                 const Eigen::Matrix3d phi_x2 = phi_x * phi_x;
-                const double c2 = 1.0 / (phi_norm * phi_norm) -
-                                  (1.0 + std::cos(phi_norm)) /
-                                      (2.0 * phi_norm * std::sin(phi_norm));
+                const double c2 =
+                    1.0 / (phi_norm * phi_norm) -
+                    (1.0 + std::cos(phi_norm)) / (2.0 * phi_norm * std::sin(phi_norm));
                 Jr_inv_post = Eigen::Matrix3d::Identity() + 0.5 * phi_x + c2 * phi_x2;
             }
             const Eigen::Matrix3d Jr_inv_T = Jr_inv_post.transpose();
@@ -605,12 +588,24 @@ FastLioOdometry::IeskfState FastLioOdometry::iteratedUpdate(const IeskfState& pr
         }
 
         if (converge_count >= 2 || iter == params_.max_iterations - 1) {
-            std::clog << "[iEKF] it=" << iter << " valid=" << valid_num << "/" << n_pts
-                      << " rms_r=" << rms_residual << " dp=" << dx_total.segment<3>(0).norm()
-                      << " dv=" << dx_total.segment<3>(3).norm()
-                      << " dba=" << dx_total.segment<3>(9).norm() << '\n';
+            const auto t_solve_end = std::chrono::steady_clock::now();
+            solve_total_ms +=
+                std::chrono::duration<double, std::milli>(t_solve_end - t_knn_end).count();
+            actual_iters = iter + 1;
+            if (converge_count < 2) {
+                static int not_converged_count = 0;
+                if (++not_converged_count % 50 == 1) {
+                    std::clog << "[iEKF] NOT CONVERGED (x" << not_converged_count << ") it=" << iter
+                              << " valid=" << valid_num << "/" << n_pts << " rms_r=" << rms_residual
+                              << "\n";
+                }
+            }
             break;
         }
+        const auto t_solve_end = std::chrono::steady_clock::now();
+        solve_total_ms +=
+            std::chrono::duration<double, std::milli>(t_solve_end - t_knn_end).count();
+        actual_iters = iter + 1;
     }
 
     // --- Covariance update ---
@@ -621,21 +616,14 @@ FastLioOdometry::IeskfState FastLioOdometry::iteratedUpdate(const IeskfState& pr
         result.P = P_bar;
     }
 
-    // Convert result back to odom frame
-    {
-        Eigen::Isometry3d T_world_result = Eigen::Isometry3d::Identity();
-        T_world_result.linear() = result.R;
-        T_world_result.translation() = result.p;
-        const Eigen::Isometry3d T_odom_result = T_map_odom_.inverse() * T_world_result;
-        result.R = T_odom_result.linear();
-        result.p = T_odom_result.translation();
-    }
+    std::clog << "[iEKF] iter=" << actual_iters << " knn=" << knn_total_ms
+              << "ms solve=" << solve_total_ms << "ms\n";
 
     return result;
 }
 
 FastLioOdometry::NearestPlaneResult FastLioOdometry::queryNearestPlane(
-    const map_builder::IkdTreeReadSession& session, const core::PointXYZIRT& pt_lidar,
+    const map_builder::IkdTreeLocalReadSession& session, const core::PointXYZIRT& pt_lidar,
     const Eigen::Isometry3d& T_world_lidar) const {
     const Eigen::Matrix3d R = T_world_lidar.linear();
     const Eigen::Vector3d t = T_world_lidar.translation();
@@ -650,7 +638,7 @@ FastLioOdometry::NearestPlaneResult FastLioOdometry::queryNearestPlane(
 
     // Zero-copy KNN through the open ReadSession — the read lock is held by the caller for
     // the entire Phase-1 batch (no per-point lock atomics).
-    const map_builder::IkdTreeReadSession::PointVector* neighbors_ptr = nullptr;
+    const map_builder::IkdTreeLocalReadSession::PointVector* neighbors_ptr = nullptr;
     const std::vector<float>* distances_ptr = nullptr;
 
     if (!session.searchKNearest(q, params_.num_nearest_neighbors, params_.search_radius,
@@ -664,7 +652,7 @@ FastLioOdometry::NearestPlaneResult FastLioOdometry::queryNearestPlane(
 }
 
 FastLioOdometry::NearestPlaneResult FastLioOdometry::fitPlane(
-    const map_builder::IkdTreeReadSession::PointVector& neighbors,
+    const map_builder::IkdTreeLocalReadSession::PointVector& neighbors,
     const Eigen::Vector3d& query_point_in_map) const {
     Eigen::Vector3d centroid = Eigen::Vector3d::Zero();
     for (const auto& p : neighbors) centroid += Eigen::Vector3d(p.x, p.y, p.z);
@@ -776,11 +764,6 @@ std::vector<core::NavState> FastLioOdometry::getNavStateQueueSnapshot() const {
         }
     }
     return result;
-}
-
-void FastLioOdometry::setMapToOdomTransform(const Eigen::Isometry3d& T_map_odom) {
-    std::lock_guard<std::mutex> lock(committed_state_mutex_);
-    T_map_odom_ = T_map_odom;
 }
 
 void FastLioOdometry::setInitialState(const core::LioInitResult& init_result) {

@@ -58,7 +58,7 @@ protected:
     /// never be used because we only call solveLinearAlignment()).
     void SetUp() override {
         scan_matcher::IkdTreeScanMatcherParams smp;
-        map_builder::IkdTreeMapBuilderParams mbp;
+        map_builder::IkdTreeLocalMapBuilderParams mbp;
         Eigen::Isometry3d T_imu_lidar = Eigen::Isometry3d::Identity();
         SfmLioInitializerParams params;
         params.min_init_scans = 3;  // irrelevant for this test

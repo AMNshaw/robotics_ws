@@ -4,7 +4,7 @@
 #include <memory>
 #include <optional>
 
-#include "lio_slam_shaw/core/i_map_builder.hpp"
+#include "lio_slam_shaw/core/i_global_map_builder.hpp"
 #include "lio_slam_shaw/core/sensor_data_types.hpp"
 
 namespace lio_slam_shaw::core {
@@ -27,7 +27,7 @@ public:
     virtual ~ILoopClosureDetector() = default;
 
     virtual std::optional<LoopConstraint> detect(const Keyframe::SharedPtr& current_keyframe,
-                                                 core::IMapBuilder::SharedPtr map_builder) = 0;
+                                                 core::IGlobalMapBuilder::SharedPtr global_map) = 0;
 };
 
 }  // namespace lio_slam_shaw::core

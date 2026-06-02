@@ -5,7 +5,6 @@
 #include <rclcpp/rclcpp.hpp>
 
 #include "lio_slam_shaw/core/i_loop_closure_detector.hpp"
-#include "lio_slam_shaw/core/i_map_builder.hpp"
 #include "lio_slam_shaw/core/i_scan_matcher.hpp"
 
 namespace lio_slam_shaw::factory {

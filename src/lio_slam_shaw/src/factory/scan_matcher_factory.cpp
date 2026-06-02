@@ -4,9 +4,9 @@
 
 namespace lio_slam_shaw::factory {
 
-core::IScanMatcher::SharedPtr ScanMatcherFactory::create(rclcpp::Node* node,
-                                                         const Eigen::Isometry3d& T_base_lidar,
-                                                         core::IMapBuilder::SharedPtr map_builder) {
+core::IScanMatcher::SharedPtr ScanMatcherFactory::create(
+    rclcpp::Node* node, const Eigen::Isometry3d& T_base_lidar,
+    std::shared_ptr<map_builder::IkdTreeLocalMapBuilder> local_map) {
     const std::string type = node->declare_parameter<std::string>("scan_matcher.type", "ikd_tree");
 
     if (type == "ikd_tree") {
@@ -27,7 +27,7 @@ core::IScanMatcher::SharedPtr ScanMatcherFactory::create(rclcpp::Node* node,
         params.rot_regularization_sigma =
             node->declare_parameter<double>("scan_matcher.rot_regularization_sigma", 0.0);
 
-        return std::make_shared<scan_matcher::IkdTreeScanMatcher>(map_builder, params);
+        return std::make_shared<scan_matcher::IkdTreeScanMatcher>(local_map, params);
     }
 
     throw std::invalid_argument("Unknown scan_matcher type '" + type + "'.");

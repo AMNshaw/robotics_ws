@@ -20,8 +20,9 @@ IcpLoopClosureDetector::IcpLoopClosureDetector(const IcpLoopClosureDetectorParam
     : params_(params) {}
 
 std::optional<core::LoopConstraint> IcpLoopClosureDetector::detect(
-    const core::Keyframe::SharedPtr& current_keyframe, core::IMapBuilder::SharedPtr map_builder) {
-    const auto all_keyframes = map_builder->getAllKeyframes();
+    const core::Keyframe::SharedPtr& current_keyframe,
+    core::IGlobalMapBuilder::SharedPtr global_map) {
+    const auto all_keyframes = global_map->getAllKeyframes();
 
     if (all_keyframes.size() < 2) return std::nullopt;
 

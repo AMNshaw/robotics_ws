@@ -10,6 +10,7 @@
 
 #include "lio_slam_shaw/core/i_feature_extractor.hpp"
 #include "lio_slam_shaw/core/i_lio_initializer.hpp"
+#include "lio_slam_shaw/core/i_local_map_builder.hpp"
 #include "lio_slam_shaw/core/i_odometry_estimator.hpp"
 #include "lio_slam_shaw/core/i_scan_preprocessor.hpp"
 #include "lio_slam_shaw/core/lidar_frame.hpp"
@@ -32,6 +33,7 @@ public:
     FrontEnd(IScanPreprocessor::SharedPtr scan_preprocessor,
              IFeatureExtractor::SharedPtr feature_extractor,
              IOdometryEstimator::SharedPtr odometry_estimator,
+             ILocalMapBuilder::SharedPtr local_map,
              ILioInitializer::SharedPtr initializer = nullptr, const FrontEndParams& params = {});
     ~FrontEnd();
 
@@ -43,13 +45,12 @@ public:
 
     std::optional<LidarFrame::SharedPtr> processPipeline();
 
-    void setOdomToMapTransform(const Eigen::Isometry3d& T_map_odom);
-
 private:
     mutable std::mutex pipeline_mtx_;
     IScanPreprocessor::SharedPtr scan_preprocessor_;
     IFeatureExtractor::SharedPtr feature_extractor_;
     IOdometryEstimator::SharedPtr odometry_estimator_;
+    ILocalMapBuilder::SharedPtr local_map_;
     ILioInitializer::SharedPtr initializer_;
     FrontEndParams params_;
     std::atomic<bool> initialized_{false};

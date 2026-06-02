@@ -2,11 +2,8 @@
 
 namespace lio_slam_shaw::core {
 
-SlamProcessor::SlamProcessor(FrontEnd::SharedPtr frontend, BackEnd::SharedPtr backend,
-                             IMapBuilder::SharedPtr map_builder)
-    : front_end_(std::move(frontend)),
-      back_end_(std::move(backend)),
-      map_builder_(std::move(map_builder)) {}
+SlamProcessor::SlamProcessor(FrontEnd::SharedPtr frontend, BackEnd::SharedPtr backend)
+    : front_end_(std::move(frontend)), back_end_(std::move(backend)) {}
 
 SlamProcessor::~SlamProcessor() {
     run_.store(false);
@@ -63,17 +60,9 @@ void SlamProcessor::frontendThread() {
 
             if (!lidar_frame_opt.has_value()) continue;
             auto lidar_frame = lidar_frame_opt.value();
-            auto t_map_start = std::chrono::steady_clock::now();
-            keyframe_to_push = map_builder_->addFrame(lidar_frame);
-            auto t_map_end = std::chrono::steady_clock::now();
-            double map_ms =
-                std::chrono::duration<double, std::milli>(t_map_end - t_map_start).count();
-            if (map_ms > 50.0)
-                std::clog << "[MapUpdate] addFrame took " << map_ms << " ms (cloud="
-                          << (lidar_frame->features.raw_deskewed
-                                  ? lidar_frame->features.raw_deskewed->size()
-                                  : 0)
-                          << ")\n";
+
+            // Try to add keyframe via backend
+            keyframe_to_push = back_end_->tryAddKeyframe(lidar_frame);
 
             {
                 std::lock_guard<std::mutex> viz_lock(viz_mutex_);
@@ -108,11 +97,7 @@ void SlamProcessor::backendThread() {
         }
 
         back_end_->processKeyframe(keyframe);
-        if (back_end_->updateGlobalCorrection()) {
-            std::unique_lock<std::shared_mutex> map_lock(map_mutex_);
-            back_end_->updateMap();
-            front_end_->setOdomToMapTransform(back_end_->getGlobalCorrection());
-        }
+        back_end_->updateGlobalCorrection();
     }
 }
 

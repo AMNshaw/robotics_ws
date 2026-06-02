@@ -12,7 +12,7 @@
         # 0 = process every scan. This matches offline dataset evaluation and
         # avoids large drift caused by skipping scan-to-map updates.
         # Set to e.g. 5 only for live real-time operation on slower CPUs.
-        max_pending_lidar_queue: 0
+        max_pending_lidar_queue: 2
 
       extrinsics:
         use_tf_extrinsic: false
@@ -47,13 +47,15 @@
       feature_extractor:
         type: "passthrough"
 
-      map_builder:
-        type: "ikd_tree"
-        keyframe_distance_threshold: 1.0
-        keyframe_rotation_threshold: 0.2
+      local_map:
         ikd_delete_param: 0.5
         ikd_balance_param: 0.6
         ikd_downsample_size: 0.5
+        box_trim_half_length: 50.0
+
+      global_map:
+        keyframe_distance_threshold: 1.0
+        keyframe_angle_threshold: 0.2
         
       loop_closure:
         type: "ikd_tree"

@@ -21,25 +21,28 @@ core::SlamProcessor::SharedPtr SlamFactory::create(rclcpp::Node* node,
 
     auto feature_extractor = FeatureExtractorFactory::create(node);
 
-    auto map_builder = MapBuilderFactory::create(node, extrinsics.T_base_lidar);
+    auto local_map = LocalMapBuilderFactory::create(node, extrinsics.T_base_lidar);
+
+    auto global_map = GlobalMapBuilderFactory::create(node, extrinsics.T_base_lidar);
 
     auto odometry_estimator = OdometryEstimatorFactory::create(node, extrinsics.T_base_lidar,
-                                                               extrinsics.T_base_imu, map_builder);
+                                                               extrinsics.T_base_imu, local_map);
 
     core::FrontEndParams frontend_params;
     frontend_params.max_pending_lidar_queue =
         static_cast<size_t>(node->declare_parameter<int>("frontend.max_pending_lidar_queue", 0));
 
-    auto frontend = std::make_shared<core::FrontEnd>(
-        scan_preprocessor, feature_extractor, odometry_estimator, lio_initializer, frontend_params);
+    auto frontend =
+        std::make_shared<core::FrontEnd>(scan_preprocessor, feature_extractor, odometry_estimator,
+                                         local_map, lio_initializer, frontend_params);
 
     auto map_optimizer = MapOptimizerFactory::create(node);
     auto loop_closure_detector = LoopClosureDetectorFactory::create(node, extrinsics.T_base_lidar);
 
     auto backend =
-        std::make_shared<core::BackEnd>(map_builder, map_optimizer, loop_closure_detector);
+        std::make_shared<core::BackEnd>(global_map, map_optimizer, loop_closure_detector);
 
-    return std::make_shared<core::SlamProcessor>(frontend, backend, map_builder);
+    return std::make_shared<core::SlamProcessor>(frontend, backend);
 }
 
 }  // namespace lio_slam_shaw::factory
