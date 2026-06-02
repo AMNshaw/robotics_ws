@@ -7,9 +7,11 @@
 
 namespace lio_slam_shaw::factory {
 
+enum class FeatureExtractorType { PASSTHROUGH };
+
 class FeatureExtractorFactory {
 public:
-    static core::IFeatureExtractor::SharedPtr create(rclcpp::Node* node);
+    static core::IFeatureExtractor::SharedPtr create(rclcpp::Node* node, FeatureExtractorType type);
 };
 
 }  // namespace lio_slam_shaw::factory

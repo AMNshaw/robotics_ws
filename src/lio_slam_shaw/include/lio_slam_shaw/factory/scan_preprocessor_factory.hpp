@@ -8,15 +8,17 @@
 
 namespace lio_slam_shaw::factory {
 
+enum class ScanPreprocessorType { IMU_DESKEW };
+
 class ScanPreprocessorFactory {
 public:
-    static core::IScanPreprocessor::SharedPtr create(
-        rclcpp::Node* node, const Eigen::Isometry3d& T_base_lidar = Eigen::Isometry3d::Identity());
+    static core::IScanPreprocessor::SharedPtr create(rclcpp::Node* node,
+                                                     const Eigen::Isometry3d& T_base_lidar,
+                                                     ScanPreprocessorType type);
 
 private:
-    static core::IScanPreprocessor::SharedPtr createDefault();
-    static core::IScanPreprocessor::SharedPtr createDeskew(
-        rclcpp::Node* node, const Eigen::Isometry3d& T_base_lidar = Eigen::Isometry3d::Identity());
+    static core::IScanPreprocessor::SharedPtr createDeskew(rclcpp::Node* node,
+                                                           const Eigen::Isometry3d& T_base_lidar);
 };
 
 }  // namespace lio_slam_shaw::factory

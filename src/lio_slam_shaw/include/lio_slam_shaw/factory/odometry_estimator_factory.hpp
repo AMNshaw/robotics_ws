@@ -8,12 +8,14 @@
 
 namespace lio_slam_shaw::factory {
 
+enum class OdometryEstimatorType { FAST_LIO };
+
 class OdometryEstimatorFactory {
 public:
     static core::IOdometryEstimator::SharedPtr create(
         rclcpp::Node* node, const Eigen::Isometry3d& T_base_lidar,
         const Eigen::Isometry3d& T_base_imu,
-        std::shared_ptr<map_builder::IkdTreeLocalMapBuilder> local_map);
+        std::shared_ptr<map_builder::IkdTreeLocalMapBuilder> local_map, OdometryEstimatorType type);
 
 private:
     static core::IOdometryEstimator::SharedPtr createFastLio(

@@ -1,19 +1,18 @@
 #include "lio_slam_shaw/factory/feature_extractor_factory.hpp"
 
+#include <stdexcept>
+
 #include "lio_slam_shaw/feature_extractor/passthrough_feature_extractor.hpp"
 
 namespace lio_slam_shaw::factory {
 
-core::IFeatureExtractor::SharedPtr FeatureExtractorFactory::create(rclcpp::Node* node) {
-    std::string type =
-        node->declare_parameter<std::string>("feature_extractor.type", "passthrough");
-
-    if (type != "passthrough") {
-        RCLCPP_WARN(node->get_logger(),
-                    "Unknown feature_extractor_type '%s', falling back to passthrough.",
-                    type.c_str());
+core::IFeatureExtractor::SharedPtr FeatureExtractorFactory::create(rclcpp::Node* /*node*/,
+                                                                   FeatureExtractorType type) {
+    switch (type) {
+        case FeatureExtractorType::PASSTHROUGH:
+            return std::make_shared<feature_extractor::PassthroughFeatureExtractor>();
     }
-    return std::make_shared<feature_extractor::PassthroughFeatureExtractor>();
+    throw std::invalid_argument("FeatureExtractorFactory: unknown type");
 }
 
 }  // namespace lio_slam_shaw::factory

@@ -8,68 +8,12 @@
       lidar_frame_id: "velodyne"
       imu_frame_id: "imu_link"
 
-      frontend:
-        # 0 = process every scan. This matches offline dataset evaluation and
-        # avoids large drift caused by skipping scan-to-map updates.
-        # Set to e.g. 5 only for live real-time operation on slower CPUs.
-        max_pending_lidar_queue: 2
-
       extrinsics:
         use_tf_extrinsic: false
         T_base_lidar_trans: [0.0, 0.0, 0.0]
         T_base_lidar_rot: [1.0, 0.0, 0.0, 0.0]
         T_base_imu_trans: [0.0, 0.0, 0.0]
         T_base_imu_rot: [1.0, 0.0, 0.0, 0.0]
-
-      odometry_estimator:
-        type: "fast_lio"
-        # IMU noise (continuous-time, from Allan variance analysis)
-        acc_noise: 3.9939570888238808e-03
-        gyr_noise: 1.5636343949698187e-03
-        acc_bias_noise: 6.4356659353532566e-05
-        gyr_bias_noise: 3.5640318696367613e-05
-        # iEKF parameters
-        measurement_noise: 0.01  # std-dev [m], squared inside the iEKF update
-        max_iterations: 3
-        state_converge_threshold: 1e-3
-        estimate_gravity: false
-        # Point-to-plane matching
-        num_nearest_neighbors: 5
-        min_plane_points: 3
-        search_radius: 1.0
-        min_plane_eigenvalue_ratio: 0.1
-        max_point_to_plane_distance: 0.5
-
-      scan_preprocessor:
-        type: "deskew"
-        voxel_leaf_size: 0.5
-
-      feature_extractor:
-        type: "passthrough"
-
-      local_map:
-        ikd_delete_param: 0.5
-        ikd_balance_param: 0.6
-        ikd_downsample_size: 0.5
-        box_trim_half_length: 50.0
-
-      global_map:
-        keyframe_distance_threshold: 1.0
-        keyframe_angle_threshold: 0.2
-        
-      loop_closure:
-        type: "ikd_tree"
-        search_radius: 5.0
-        min_time_gap_sec: 30.0
-        scan_matcher:
-          k_neighbors: 5
-          max_iterations: 100
-          convergence_threshold: 1e-5
-          min_valid_points: 50
-          degenerate_threshold: 10000.0
-          min_plane_points: 5
-          max_search_dist: 2.0
-          plane_valid_threshold: 0.1
 
       initializer:
         sfm:
@@ -94,3 +38,61 @@
           ikd_delete_param: 0.5
           ikd_balance_param: 0.6
           ikd_downsample_size: 0.3
+
+      frontend:
+        max_pending_lidar_queue: 2
+
+        odometry_estimator:
+          # IMU noise (continuous-time, from Allan variance analysis)
+          acc_noise: 3.9939570888238808e-03
+          gyr_noise: 1.5636343949698187e-03
+          acc_bias_noise: 6.4356659353532566e-05
+          gyr_bias_noise: 3.5640318696367613e-05
+          # iEKF parameters
+          measurement_noise: 0.01  # std-dev [m], squared inside the iEKF update
+          max_iterations: 3
+          state_converge_threshold: 1e-3
+          estimate_gravity: false
+          # Point-to-plane matching
+          num_nearest_neighbors: 5
+          min_plane_points: 3
+          search_radius: 1.0
+          min_plane_eigenvalue_ratio: 0.1
+          max_point_to_plane_distance: 0.5
+
+        scan_preprocessor:
+          voxel_leaf_size: 0.5
+
+        local_map:
+          ikd_delete_param: 0.5
+          ikd_balance_param: 0.6
+          ikd_downsample_size: 0.5
+          box_trim_half_length: 50.0
+
+      backend:
+        global_map:
+          keyframe_distance_threshold: 1.0
+          keyframe_angle_threshold: 0.2
+
+        map_optimizer:
+          prior_noise: [1e-12, 1e-12, 1e-12, 1e-12, 1e-12, 1e-12]
+          odom_noise: [1e-6, 1e-6, 1e-6, 1e-4, 1e-4, 1e-4]
+          odom_noise_degenerate: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+          isam2_relinearize_threshold: 0.1
+          isam2_relinearize_skip: 1
+
+        loop_closure:
+          type: "ikd_tree"
+          search_radius: 5.0
+          min_time_gap_sec: 30.0
+          scan_matcher:
+            k_neighbors: 5
+            max_iterations: 100
+            convergence_threshold: 1e-5
+            min_valid_points: 50
+            degenerate_threshold: 10000.0
+            min_plane_points: 5
+            max_search_dist: 2.0
+            plane_valid_threshold: 0.1
+
+      

@@ -147,6 +147,8 @@ add_library(factory
   src/factory/scan_matcher_factory.cpp
   src/factory/scan_preprocessor_factory.cpp
   src/factory/slam_factory.cpp
+  src/factory/frontend_facade.cpp
+  src/factory/backend_facade.cpp
   src/factory/lio_initializer_factory.cpp
 )
 target_link_libraries(factory

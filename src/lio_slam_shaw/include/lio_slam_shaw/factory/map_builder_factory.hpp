@@ -10,16 +10,20 @@
 
 namespace lio_slam_shaw::factory {
 
+enum class LocalMapType { IKD_TREE };
+enum class GlobalMapType { IKD_TREE };
+
 class LocalMapBuilderFactory {
 public:
     static std::shared_ptr<map_builder::IkdTreeLocalMapBuilder> create(
-        rclcpp::Node* node, const Eigen::Isometry3d& T_base_lidar = Eigen::Isometry3d::Identity());
+        rclcpp::Node* node, const Eigen::Isometry3d& T_base_lidar, LocalMapType type);
 };
 
 class GlobalMapBuilderFactory {
 public:
-    static core::IGlobalMapBuilder::SharedPtr create(
-        rclcpp::Node* node, const Eigen::Isometry3d& T_base_lidar = Eigen::Isometry3d::Identity());
+    static core::IGlobalMapBuilder::SharedPtr create(rclcpp::Node* node,
+                                                     const Eigen::Isometry3d& T_base_lidar,
+                                                     GlobalMapType type);
 };
 
 }  // namespace lio_slam_shaw::factory
