@@ -1,5 +1,5 @@
-#ifndef LIO_SLAM_SHAW__MAP_BUILDER__IKD_TREE_GLOBAL_MAP_BUILDER_HPP_
-#define LIO_SLAM_SHAW__MAP_BUILDER__IKD_TREE_GLOBAL_MAP_BUILDER_HPP_
+#ifndef LIO_SLAM_SHAW__MAP_BUILDER__KEYFRAME_GLOBAL_MAP_BUILDER_HPP_
+#define LIO_SLAM_SHAW__MAP_BUILDER__KEYFRAME_GLOBAL_MAP_BUILDER_HPP_
 
 #include <Eigen/Geometry>
 #include <memory>
@@ -12,20 +12,19 @@
 
 namespace lio_slam_shaw::map_builder {
 
-struct IkdTreeGlobalMapBuilderParams {
+struct KeyframeGlobalMapBuilderParams {
     double keyframe_distance_threshold = 1.0;
     double keyframe_angle_threshold = 0.2;
     Eigen::Isometry3d T_base_lidar = Eigen::Isometry3d::Identity();
 };
 
-/// Global map builder that manages keyframes and handles pose corrections.
-/// Does NOT own any ikd-tree — the local map is managed by IkdTreeLocalMapBuilder.
-class IkdTreeGlobalMapBuilder : public core::IGlobalMapBuilder {
+/// Global map builder that manages keyframes as a flat vector + index map.
+class KeyframeGlobalMapBuilder : public core::IGlobalMapBuilder {
 public:
-    using SharedPtr = std::shared_ptr<IkdTreeGlobalMapBuilder>;
+    using SharedPtr = std::shared_ptr<KeyframeGlobalMapBuilder>;
 
-    explicit IkdTreeGlobalMapBuilder(const IkdTreeGlobalMapBuilderParams& params = {});
-    ~IkdTreeGlobalMapBuilder() override = default;
+    explicit KeyframeGlobalMapBuilder(const KeyframeGlobalMapBuilderParams& params = {});
+    ~KeyframeGlobalMapBuilder() override = default;
 
     std::optional<core::Keyframe::SharedPtr> addKeyFrame(
         const core::LidarFrame::SharedPtr& frame) override;
@@ -41,7 +40,7 @@ public:
 private:
     bool isNewKeyframe(const Eigen::Isometry3d& pose) const;
 
-    IkdTreeGlobalMapBuilderParams params_;
+    KeyframeGlobalMapBuilderParams params_;
 
     mutable std::shared_mutex keyframe_mutex_;
     std::vector<core::Keyframe::SharedPtr> keyframes_;
@@ -51,4 +50,4 @@ private:
 
 }  // namespace lio_slam_shaw::map_builder
 
-#endif  // LIO_SLAM_SHAW__MAP_BUILDER__IKD_TREE_GLOBAL_MAP_BUILDER_HPP_
+#endif  // LIO_SLAM_SHAW__MAP_BUILDER__KEYFRAME_GLOBAL_MAP_BUILDER_HPP_

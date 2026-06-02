@@ -56,7 +56,7 @@ target_link_libraries(scan_preprocessor
 
 add_library(map_builder
   src/map_builder/ikd_tree_local_map_builder.cpp
-  src/map_builder/ikd_tree_global_map_builder.cpp
+  src/map_builder/keyframe_global_map_builder.cpp
   src/map_builder/ikd_tree.cpp
 )
 target_link_libraries(map_builder

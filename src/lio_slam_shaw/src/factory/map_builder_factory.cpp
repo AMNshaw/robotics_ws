@@ -1,7 +1,7 @@
 #include "lio_slam_shaw/factory/map_builder_factory.hpp"
 
-#include "lio_slam_shaw/map_builder/ikd_tree_global_map_builder.hpp"
 #include "lio_slam_shaw/map_builder/ikd_tree_local_map_builder.hpp"
+#include "lio_slam_shaw/map_builder/keyframe_global_map_builder.hpp"
 
 namespace lio_slam_shaw::factory {
 
@@ -28,17 +28,17 @@ std::shared_ptr<map_builder::IkdTreeLocalMapBuilder> LocalMapBuilderFactory::cre
 core::IGlobalMapBuilder::SharedPtr GlobalMapBuilderFactory::create(
     rclcpp::Node* node, const Eigen::Isometry3d& T_base_lidar, GlobalMapType type) {
     switch (type) {
-        case GlobalMapType::IKD_TREE:
+        case GlobalMapType::KEYFRAME:
             break;
     }
-    map_builder::IkdTreeGlobalMapBuilderParams params;
+    map_builder::KeyframeGlobalMapBuilderParams params;
     params.keyframe_distance_threshold =
         node->declare_parameter<double>("backend.global_map.keyframe_distance_threshold", 1.0);
     params.keyframe_angle_threshold =
         node->declare_parameter<double>("backend.global_map.keyframe_angle_threshold", 0.2);
     params.T_base_lidar = T_base_lidar;
 
-    return std::make_shared<map_builder::IkdTreeGlobalMapBuilder>(params);
+    return std::make_shared<map_builder::KeyframeGlobalMapBuilder>(params);
 }
 
 }  // namespace lio_slam_shaw::factory

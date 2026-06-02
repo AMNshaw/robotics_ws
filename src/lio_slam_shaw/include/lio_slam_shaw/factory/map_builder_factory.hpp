@@ -11,7 +11,7 @@
 namespace lio_slam_shaw::factory {
 
 enum class LocalMapType { IKD_TREE };
-enum class GlobalMapType { IKD_TREE };
+enum class GlobalMapType { KEYFRAME };
 
 class LocalMapBuilderFactory {
 public:

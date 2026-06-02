@@ -9,7 +9,7 @@ namespace lio_slam_shaw::factory {
 core::BackEnd::SharedPtr GtsamBackEndFacade::create(rclcpp::Node* node,
                                                     const Extrinsics& extrinsics) {
     auto global_map =
-        GlobalMapBuilderFactory::create(node, extrinsics.T_base_lidar, GlobalMapType::IKD_TREE);
+        GlobalMapBuilderFactory::create(node, extrinsics.T_base_lidar, GlobalMapType::KEYFRAME);
     auto map_optimizer = MapOptimizerFactory::create(node);
     auto loop_closure_detector = LoopClosureDetectorFactory::create(node, extrinsics.T_base_lidar);
 

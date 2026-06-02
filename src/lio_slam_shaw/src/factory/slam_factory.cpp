@@ -16,7 +16,7 @@ core::SlamProcessor::SharedPtr SlamFactory::create(rclcpp::Node* node,
 
     // --- BackEnd (type still configurable via YAML) ---
     auto global_map =
-        GlobalMapBuilderFactory::create(node, extrinsics.T_base_lidar, GlobalMapType::IKD_TREE);
+        GlobalMapBuilderFactory::create(node, extrinsics.T_base_lidar, GlobalMapType::KEYFRAME);
     auto map_optimizer = MapOptimizerFactory::create(node);
     auto loop_closure_detector = LoopClosureDetectorFactory::create(node, extrinsics.T_base_lidar);
 

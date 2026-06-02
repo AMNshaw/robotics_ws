@@ -1,4 +1,4 @@
-#include "lio_slam_shaw/map_builder/ikd_tree_global_map_builder.hpp"
+#include "lio_slam_shaw/map_builder/keyframe_global_map_builder.hpp"
 
 #include <omp.h>
 
@@ -7,10 +7,10 @@
 
 namespace lio_slam_shaw::map_builder {
 
-IkdTreeGlobalMapBuilder::IkdTreeGlobalMapBuilder(const IkdTreeGlobalMapBuilderParams& params)
+KeyframeGlobalMapBuilder::KeyframeGlobalMapBuilder(const KeyframeGlobalMapBuilderParams& params)
     : params_(params) {}
 
-std::optional<core::Keyframe::SharedPtr> IkdTreeGlobalMapBuilder::addKeyFrame(
+std::optional<core::Keyframe::SharedPtr> KeyframeGlobalMapBuilder::addKeyFrame(
     const core::LidarFrame::SharedPtr& frame) {
     const Eigen::Isometry3d& T_map_body = frame->matched_result.pose;
 
@@ -27,7 +27,7 @@ std::optional<core::Keyframe::SharedPtr> IkdTreeGlobalMapBuilder::addKeyFrame(
     return kf;
 }
 
-void IkdTreeGlobalMapBuilder::updateKeyframePoses(
+void KeyframeGlobalMapBuilder::updateKeyframePoses(
     const std::vector<std::pair<uint64_t, Eigen::Isometry3d>>& id_pose_pairs) {
     std::unique_lock<std::shared_mutex> lock(keyframe_mutex_);
     for (const auto& [id, pose] : id_pose_pairs) {
@@ -38,25 +38,25 @@ void IkdTreeGlobalMapBuilder::updateKeyframePoses(
     }
 }
 
-std::vector<core::Keyframe::SharedPtr> IkdTreeGlobalMapBuilder::getAllKeyframes() const {
+std::vector<core::Keyframe::SharedPtr> KeyframeGlobalMapBuilder::getAllKeyframes() const {
     std::shared_lock<std::shared_mutex> lock(keyframe_mutex_);
     return keyframes_;
 }
 
-std::optional<core::Keyframe::SharedPtr> IkdTreeGlobalMapBuilder::getKeyframe(uint64_t id) const {
+std::optional<core::Keyframe::SharedPtr> KeyframeGlobalMapBuilder::getKeyframe(uint64_t id) const {
     std::shared_lock<std::shared_mutex> lock(keyframe_mutex_);
     auto it = keyframe_index_.find(id);
     if (it == keyframe_index_.end()) return std::nullopt;
     return keyframes_[it->second];
 }
 
-std::optional<core::Keyframe::SharedPtr> IkdTreeGlobalMapBuilder::getLatestKeyframe() const {
+std::optional<core::Keyframe::SharedPtr> KeyframeGlobalMapBuilder::getLatestKeyframe() const {
     std::shared_lock<std::shared_mutex> lock(keyframe_mutex_);
     if (keyframes_.empty()) return std::nullopt;
     return keyframes_.back();
 }
 
-core::PointCloudIRTPtr IkdTreeGlobalMapBuilder::getGlobalMap() const {
+core::PointCloudIRTPtr KeyframeGlobalMapBuilder::getGlobalMap() const {
     std::shared_lock<std::shared_mutex> lock(keyframe_mutex_);
     auto cloud = std::make_shared<core::PointCloudIRT>();
 
@@ -81,7 +81,7 @@ core::PointCloudIRTPtr IkdTreeGlobalMapBuilder::getGlobalMap() const {
     return cloud;
 }
 
-bool IkdTreeGlobalMapBuilder::isNewKeyframe(const Eigen::Isometry3d& pose) const {
+bool KeyframeGlobalMapBuilder::isNewKeyframe(const Eigen::Isometry3d& pose) const {
     std::shared_lock<std::shared_mutex> lock(keyframe_mutex_);
     if (keyframes_.empty()) return true;
 
