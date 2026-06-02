@@ -225,11 +225,10 @@ std::optional<LidarFrame::SharedPtr> FrontEnd::processPipeline() {
         return std::chrono::duration<double, std::milli>(b - a).count();
     };
     double total_ms = timer.tok();
-    std::clog << " deskew=" << ms(t0, t1) << " feat=" << ms(t1, t2) << " odom=" << ms(t2, t3)
-              << " map=" << ms(t3, t4)
+    std::clog << "[FrontEnd] " << total_ms << "ms deskew=" << ms(t0, t1) << " feat=" << ms(t1, t2)
+              << " odom=" << ms(t2, t3) << " map=" << ms(t3, t4)
               << " | pts=" << (features.raw_deskewed ? features.raw_deskewed->size() : 0)
               << " q=" << q_size << '\n';
-    (void)total_ms;
     return frame;
 }
 

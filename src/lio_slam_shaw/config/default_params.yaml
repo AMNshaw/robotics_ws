@@ -33,8 +33,6 @@
           plane_valid_threshold: 0.1
           rot_regularization_sigma: 0.0
         map_builder:
-          keyframe_distance_threshold: 1.0
-          keyframe_angle_threshold: 0.2
           ikd_delete_param: 0.5
           ikd_balance_param: 0.6
           ikd_downsample_size: 0.3
