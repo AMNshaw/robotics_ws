@@ -7,9 +7,9 @@
 #include <shared_mutex>
 #include <vector>
 
+#include "ikd_tree.h"
 #include "lio_slam_shaw/core/i_local_map_builder.hpp"
 #include "lio_slam_shaw/core/keyframe.hpp"
-#include "lio_slam_shaw/map_builder/ikd_tree.h"
 
 namespace lio_slam_shaw::map_builder {
 

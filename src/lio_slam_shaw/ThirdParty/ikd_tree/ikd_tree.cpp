@@ -1,4 +1,4 @@
-#include "lio_slam_shaw/map_builder/ikd_tree.h"
+#include "ikd_tree.h"
 
 #include "lio_slam_shaw/core/sensor_data_types.hpp"
 

@@ -29,13 +29,15 @@ find_package(OpenMP REQUIRED)
 set(THIRDPARTY_INCLUDE_DIRS
     SYSTEM ${PCL_INCLUDE_DIRS}
     ${EIGEN3_INCLUDE_DIRS}
-  ${GTSAM_INCLUDE_DIR}
+    ${GTSAM_INCLUDE_DIR}
     ${OpenMP_INCLUDE_DIRS}
 )
 
 include_directories(
     include
     ${THIRDPARTY_INCLUDE_DIRS}
+    ThirdParty/ikd_tree
+    ThirdParty/scancontext
 )
 
 add_library(imu_preintegrator
@@ -57,7 +59,7 @@ target_link_libraries(scan_preprocessor
 add_library(map_builder
   src/map_builder/ikd_tree_local_map_builder.cpp
   src/map_builder/keyframe_global_map_builder.cpp
-  src/map_builder/ikd_tree.cpp
+  ThirdParty/ikd_tree/ikd_tree.cpp
 )
 target_link_libraries(map_builder
   ${PCL_LIBRARIES}
