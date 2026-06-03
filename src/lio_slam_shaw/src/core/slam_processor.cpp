@@ -1,5 +1,8 @@
 #include "lio_slam_shaw/core/slam_processor.hpp"
 
+#include <chrono>
+#include <cstdio>
+
 namespace lio_slam_shaw::core {
 
 SlamProcessor::SlamProcessor(FrontEnd::SharedPtr frontend, BackEnd::SharedPtr backend)
@@ -93,6 +96,7 @@ void SlamProcessor::frontendThread() {
 void SlamProcessor::backendThread() {
     while (run_.load()) {
         Keyframe::SharedPtr keyframe;
+        bool skip_lc = false;
         {
             std::unique_lock<std::mutex> lock(backend_mutex_);
             backend_cv_.wait(lock, [this] { return !run_.load() || !keyframe_queue_.empty(); });
@@ -100,10 +104,21 @@ void SlamProcessor::backendThread() {
 
             keyframe = keyframe_queue_.front();
             keyframe_queue_.pop();
+            skip_lc = !keyframe_queue_.empty();  // skip if more queued behind
         }
 
-        back_end_->processKeyframe(keyframe);
+        back_end_->processKeyframe(keyframe, skip_lc);
         back_end_->updateGlobalCorrection();
+
+        // Log backend queue status
+        {
+            std::lock_guard<std::mutex> lock(backend_mutex_);
+            const size_t remaining = keyframe_queue_.size();
+            if (remaining > 0 || !skip_lc) {
+                std::printf("[Backend] kf_id=%lu queue_remaining=%zu skip_lc=%d\n", keyframe->id,
+                            remaining, skip_lc ? 1 : 0);
+            }
+        }
 
         // Push global visualization data
         ++keyframe_count_since_last_map_;

@@ -9,14 +9,21 @@ BackEnd::BackEnd(IGlobalMapBuilder::SharedPtr global_map, IMapOptimizer::SharedP
       loop_closure_detector_(std::move(loop_closure_detector)) {}
 
 std::optional<Keyframe::SharedPtr> BackEnd::tryAddKeyframe(const LidarFrame::SharedPtr& frame) {
-    return global_map_->addKeyFrame(frame);
+    auto kf_opt = global_map_->addKeyFrame(frame);
+    if (kf_opt.has_value()) {
+        std::lock_guard<std::mutex> lock(T_map_odom_mutex_);
+        kf_opt.value()->pose = T_map_odom_ * frame->matched_result.pose;
+    }
+    return kf_opt;
 }
 
-void BackEnd::processKeyframe(const Keyframe::SharedPtr& keyframe) {
+void BackEnd::processKeyframe(const Keyframe::SharedPtr& keyframe, bool skip_loop_closure) {
     map_optimizer_->addKeyframe(keyframe->id, keyframe->matched_result);
 
     // Update keyframe pose to optimizer's map-frame estimate immediately
     keyframe->pose = map_optimizer_->getKeyframePose(keyframe->id).pose;
+
+    if (skip_loop_closure) return;
 
     auto loop_opt = loop_closure_detector_->detect(keyframe, global_map_);
     if (!loop_opt.has_value()) return;
@@ -50,7 +57,10 @@ bool BackEnd::updateGlobalCorrection() {
         return false;
     }
 
-    T_map_odom_ = pending_correction_.value();  // full T_map_odom, not delta
+    {
+        std::lock_guard<std::mutex> lock(T_map_odom_mutex_);
+        T_map_odom_ = pending_correction_.value();
+    }
     pending_correction_ = std::nullopt;
 
     global_map_->updateKeyframePoses(pending_corrected_poses_);
@@ -58,7 +68,10 @@ bool BackEnd::updateGlobalCorrection() {
     return true;
 }
 
-Eigen::Isometry3d BackEnd::getGlobalCorrection() const { return T_map_odom_; }
+Eigen::Isometry3d BackEnd::getGlobalCorrection() const {
+    std::lock_guard<std::mutex> lock(T_map_odom_mutex_);
+    return T_map_odom_;
+}
 
 std::vector<Keyframe::SharedPtr> BackEnd::getAllKeyframes() const {
     return global_map_->getAllKeyframes();

@@ -25,7 +25,7 @@ public:
     /// Check if a frame qualifies as a keyframe. Returns the keyframe if yes.
     std::optional<Keyframe::SharedPtr> tryAddKeyframe(const LidarFrame::SharedPtr& frame);
 
-    void processKeyframe(const Keyframe::SharedPtr& frame);
+    void processKeyframe(const Keyframe::SharedPtr& frame, bool skip_loop_closure = false);
 
     bool updateGlobalCorrection();
     Eigen::Isometry3d getGlobalCorrection() const;
@@ -51,6 +51,7 @@ private:
     std::vector<std::pair<uint64_t, Eigen::Isometry3d>> pending_corrected_poses_;
 
     Eigen::Isometry3d T_map_odom_ = Eigen::Isometry3d::Identity();
+    mutable std::mutex T_map_odom_mutex_;
 
     mutable std::mutex loop_edges_mutex_;
     std::vector<LoopEdge> loop_edges_;
