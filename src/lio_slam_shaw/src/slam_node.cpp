@@ -1,9 +1,13 @@
 #include "lio_slam_shaw/slam_node.hpp"
 
+#include <pcl/filters/voxel_grid.h>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 
 #include <geometry_msgs/msg/transform_stamped.hpp>
+#include <pcl/filters/impl/filter.hpp>
+#include <pcl/filters/impl/voxel_grid.hpp>
+#include <pcl/impl/pcl_base.hpp>
 #include <set>
 #include <tf2_eigen/tf2_eigen.hpp>
 
@@ -365,8 +369,13 @@ void SlamNode::publishGlobalViz(const core::GlobalVizData& data) {
 
     // Publish global map if assembled this round
     if (data.global_map && !data.global_map->empty()) {
+        pcl::VoxelGrid<core::PointXYZIRT> voxel;
+        voxel.setLeafSize(1.0, 1.0, 1.0);
+        auto filtered = std::make_shared<core::PointCloudIRT>();
+        voxel.setInputCloud(data.global_map);
+        voxel.filter(*filtered);
         auto map_msg = std::make_shared<sensor_msgs::msg::PointCloud2>();
-        pcl::toROSMsg(*data.global_map, *map_msg);
+        pcl::toROSMsg(*filtered, *map_msg);
         map_msg->header.stamp = this->get_clock()->now();
         map_msg->header.frame_id = "map";
         global_map_publisher_->publish(*map_msg);
