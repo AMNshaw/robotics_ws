@@ -35,6 +35,7 @@ public:
     std::vector<core::Keyframe::SharedPtr> getAllKeyframes() const override;
     std::optional<core::Keyframe::SharedPtr> getKeyframe(uint64_t id) const override;
     std::optional<core::Keyframe::SharedPtr> getLatestKeyframe() const override;
+    size_t getKeyframeCount() const override;
     core::PointCloudIRTPtr getGlobalMap() const override;
 
 private:

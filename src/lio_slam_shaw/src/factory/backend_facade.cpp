@@ -11,7 +11,7 @@ core::BackEnd::SharedPtr GtsamBackEndFacade::create(rclcpp::Node* node,
     auto global_map =
         GlobalMapBuilderFactory::create(node, extrinsics.T_base_lidar, GlobalMapType::KEYFRAME);
     auto map_optimizer = MapOptimizerFactory::create(node);
-    auto loop_closure_detector = LoopClosureDetectorFactory::create(node, extrinsics.T_base_lidar);
+    auto loop_closure_detector = LoopClosureDetectorFactory::create(node);
 
     return std::make_shared<core::BackEnd>(global_map, map_optimizer, loop_closure_detector);
 }

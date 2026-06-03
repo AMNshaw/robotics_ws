@@ -60,6 +60,7 @@ private:
     std::map<uint64_t, gtsam::Key> id_to_key_;
 
     std::map<uint64_t, Eigen::Isometry3d> id_to_pose_;
+    std::map<uint64_t, Eigen::Isometry3d> id_to_odom_pose_;  // raw odom for between factors
 
     bool has_first_keyframe_ = false;
     uint64_t last_keyframe_id_ = 0;

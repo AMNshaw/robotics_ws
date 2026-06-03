@@ -1,7 +1,7 @@
 /**:
   slam_node:
     ros__parameters:
-      lidar_type: "Velodyne"
+      lidar_type: "Ouster"
       lidar_topic: "/points_raw"
       imu_topic: "/imu_raw"
       tracking_frame_id: "base_link"
@@ -10,6 +10,7 @@
 
       extrinsics:
         use_tf_extrinsic: false
+        # MulRan: Ouster OS1-64 and Xsens IMU are approximately co-located
         T_base_lidar_trans: [0.0, 0.0, 0.0]
         T_base_lidar_rot: [1.0, 0.0, 0.0, 0.0]
         T_base_imu_trans: [0.0, 0.0, 0.0]
@@ -41,13 +42,13 @@
         max_pending_lidar_queue: 2
 
         odometry_estimator:
-          # IMU noise (continuous-time, from Allan variance analysis)
+          # Xsens MTi IMU noise (continuous-time)
           acc_noise: 3.9939570888238808e-03
           gyr_noise: 1.5636343949698187e-03
           acc_bias_noise: 6.4356659353532566e-05
           gyr_bias_noise: 3.5640318696367613e-05
           # iEKF parameters
-          measurement_noise: 0.01  # std-dev [m], squared inside the iEKF update
+          measurement_noise: 0.01
           max_iterations: 3
           state_converge_threshold: 1e-3
           estimate_gravity: false
@@ -93,9 +94,7 @@
             num_ring: 20
             num_sector: 60
             max_radius: 80.0
-            lidar_height: 2.0
+            lidar_height: 1.8
             num_candidates: 10
             sc_dist_threshold: 0.13
             search_ratio: 0.1
-
-      

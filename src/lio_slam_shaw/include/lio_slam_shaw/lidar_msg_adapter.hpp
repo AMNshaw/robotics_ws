@@ -49,24 +49,99 @@ inline core::LidarData convertVelodyne(const sensor_msgs::msg::PointCloud2::Shar
 }
 
 inline core::LidarData convertOuster(const sensor_msgs::msg::PointCloud2::SharedPtr& msg) {
-    sensor_msgs::msg::PointCloud2 msg_modified = *msg;
+    const auto& fields = msg->fields;
+    const uint8_t* raw = msg->data.data();
+    const uint32_t point_step = msg->point_step;
+    const uint32_t n_points = msg->width * msg->height;
 
-    for (auto& field : msg_modified.fields) {
-        if (field.name == "t") {
-            field.name = "time";
-            break;
+    // Find field offsets and datatypes
+    int off_x = -1, off_y = -1, off_z = -1;
+    int off_intensity = -1, off_reflectivity = -1;
+    int off_ring = -1;
+    int off_t = -1, off_time = -1;
+    uint8_t dt_ring = 0, dt_t = 0, dt_intensity = 0;
+
+    for (const auto& f : fields) {
+        if (f.name == "x")
+            off_x = f.offset;
+        else if (f.name == "y")
+            off_y = f.offset;
+        else if (f.name == "z")
+            off_z = f.offset;
+        else if (f.name == "intensity") {
+            off_intensity = f.offset;
+            dt_intensity = f.datatype;
+        } else if (f.name == "reflectivity") {
+            off_reflectivity = f.offset;
+            dt_intensity = f.datatype;
+        } else if (f.name == "ring") {
+            off_ring = f.offset;
+            dt_ring = f.datatype;
+        } else if (f.name == "t") {
+            off_t = f.offset;
+            dt_t = f.datatype;
+        } else if (f.name == "time") {
+            off_time = f.offset;
+            dt_t = f.datatype;
         }
     }
 
-    for (auto& field : msg_modified.fields) {
-        if (field.name == "reflectivity") {
-            field.name = "intensity";
-            break;
-        }
-    }
+    const int i_off = (off_intensity >= 0) ? off_intensity : off_reflectivity;
+    const int t_off = (off_time >= 0) ? off_time : off_t;
 
     auto cloud = std::make_shared<pcl::PointCloud<core::PointXYZIRT>>();
-    pcl::fromROSMsg(msg_modified, *cloud);
+    cloud->resize(n_points);
+
+    for (uint32_t i = 0; i < n_points; ++i) {
+        const uint8_t* p = raw + i * point_step;
+        auto& pt = cloud->points[i];
+
+        pt.x = *reinterpret_cast<const float*>(p + off_x);
+        pt.y = *reinterpret_cast<const float*>(p + off_y);
+        pt.z = *reinterpret_cast<const float*>(p + off_z);
+
+        // intensity / reflectivity: handle uint16, uint32, or float32
+        if (i_off >= 0) {
+            if (dt_intensity == sensor_msgs::msg::PointField::FLOAT32)
+                pt.intensity = *reinterpret_cast<const float*>(p + i_off);
+            else if (dt_intensity == sensor_msgs::msg::PointField::UINT16)
+                pt.intensity = static_cast<float>(*reinterpret_cast<const uint16_t*>(p + i_off));
+            else if (dt_intensity == sensor_msgs::msg::PointField::UINT32)
+                pt.intensity = static_cast<float>(*reinterpret_cast<const uint32_t*>(p + i_off));
+            else
+                pt.intensity = 0.0f;
+        } else {
+            pt.intensity = 0.0f;
+        }
+
+        // ring: uint8 or uint16
+        if (off_ring >= 0) {
+            if (dt_ring == sensor_msgs::msg::PointField::UINT8)
+                pt.ring = static_cast<uint16_t>(*(p + off_ring));
+            else if (dt_ring == sensor_msgs::msg::PointField::UINT16)
+                pt.ring = *reinterpret_cast<const uint16_t*>(p + off_ring);
+            else
+                pt.ring = 0;
+        } else {
+            pt.ring = 0;
+        }
+
+        // time: uint32 (nanoseconds) or float32 (seconds)
+        if (t_off >= 0) {
+            if (dt_t == sensor_msgs::msg::PointField::FLOAT32)
+                pt.time = *reinterpret_cast<const float*>(p + t_off);
+            else if (dt_t == sensor_msgs::msg::PointField::UINT32)
+                pt.time = static_cast<float>(*reinterpret_cast<const uint32_t*>(p + t_off)) * 1e-9f;
+            else
+                pt.time = 0.0f;
+        } else {
+            pt.time = 0.0f;
+        }
+    }
+
+    cloud->width = n_points;
+    cloud->height = 1;
+    cloud->is_dense = false;
 
     core::Timestamp timestamp = rclcppTimeToChrono(msg->header.stamp);
     core::Timestamp time_start = timestamp;

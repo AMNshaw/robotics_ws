@@ -1,6 +1,7 @@
 #ifndef LIO_SLAM_SHAW__CORE__BACKEND_HPP_
 #define LIO_SLAM_SHAW__CORE__BACKEND_HPP_
 
+#include <mutex>
 #include <optional>
 #include <utility>
 
@@ -8,6 +9,7 @@
 #include "lio_slam_shaw/core/i_loop_closure_detector.hpp"
 #include "lio_slam_shaw/core/i_map_optimizer.hpp"
 #include "lio_slam_shaw/core/lidar_frame.hpp"
+#include "lio_slam_shaw/core/visualization_types.hpp"
 
 namespace lio_slam_shaw::core {
 
@@ -28,6 +30,18 @@ public:
     bool updateGlobalCorrection();
     Eigen::Isometry3d getGlobalCorrection() const;
 
+    /// Access keyframes from the global map (thread-safe read via caller's lock).
+    std::vector<Keyframe::SharedPtr> getAllKeyframes() const;
+
+    /// Get lightweight keyframe poses (id, pose) for visualization.
+    std::vector<std::pair<uint64_t, Eigen::Isometry3d>> getAllKeyframePoses() const;
+
+    /// Get all detected loop closure edges (for visualization).
+    std::vector<LoopEdge> getLoopEdges() const;
+
+    /// Assemble the full global map point cloud.
+    PointCloudIRTPtr getGlobalMap() const;
+
 private:
     IGlobalMapBuilder::SharedPtr global_map_;
     IMapOptimizer::SharedPtr map_optimizer_;
@@ -37,6 +51,9 @@ private:
     std::vector<std::pair<uint64_t, Eigen::Isometry3d>> pending_corrected_poses_;
 
     Eigen::Isometry3d T_map_odom_ = Eigen::Isometry3d::Identity();
+
+    mutable std::mutex loop_edges_mutex_;
+    std::vector<LoopEdge> loop_edges_;
 };
 
 }  // namespace lio_slam_shaw::core

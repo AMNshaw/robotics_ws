@@ -16,6 +16,7 @@ find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(visualization_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_eigen REQUIRED)
@@ -110,8 +111,9 @@ target_link_libraries(map_optimizer
 )
 
 add_library(loop_closure_detector
-  src/loop_closure_detector/ikd_tree_loop_closure_detector.cpp
   src/loop_closure_detector/icp_loop_closure_detector.cpp
+  src/loop_closure_detector/scan_context_manager.cpp
+  src/loop_closure_detector/scan_context_loop_closure_detector.cpp
 )
 target_link_libraries(loop_closure_detector
   scan_matcher
@@ -183,6 +185,7 @@ ament_target_dependencies(slam_node
   sensor_msgs
   nav_msgs
   geometry_msgs
+  visualization_msgs
   tf2
   tf2_ros
   tf2_eigen

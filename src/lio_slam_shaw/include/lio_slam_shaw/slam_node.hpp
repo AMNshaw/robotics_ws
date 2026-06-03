@@ -13,6 +13,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 
 #include "lio_slam_shaw/core/sensor_data_types.hpp"
 #include "lio_slam_shaw/core/slam_processor.hpp"
@@ -47,11 +48,16 @@ private:
 
     void publishPath(const core::NavState& odom_state);
 
-    void publishVisualization(const core::VisualizationData& viz_data);
+    void publishLocalViz(const core::LocalVizData& data);
+
+    void publishGlobalViz(const core::GlobalVizData& data);
 
     std::shared_ptr<rclcpp::Publisher<nav_msgs::msg::Odometry>> odom_publisher_;
     std::shared_ptr<rclcpp::Publisher<sensor_msgs::msg::PointCloud2>> cloud_publisher_;
     std::shared_ptr<rclcpp::Publisher<nav_msgs::msg::Path>> path_publisher_;
+    std::shared_ptr<rclcpp::Publisher<nav_msgs::msg::Path>> keyframe_path_publisher_;
+    std::shared_ptr<rclcpp::Publisher<visualization_msgs::msg::MarkerArray>> loop_marker_publisher_;
+    std::shared_ptr<rclcpp::Publisher<sensor_msgs::msg::PointCloud2>> global_map_publisher_;
 
     std::shared_ptr<rclcpp::Subscription<sensor_msgs::msg::Imu>> imu_subscription_;
     std::shared_ptr<rclcpp::Subscription<sensor_msgs::msg::PointCloud2>> velodyne_subscription_;
@@ -70,6 +76,9 @@ private:
     std::string tracking_frame_id_ = "";
     std::string lidar_frame_id_ = "";
     std::string imu_frame_id_ = "";
+
+    std::mutex T_map_odom_mutex_;
+    Eigen::Isometry3d T_map_odom_ = Eigen::Isometry3d::Identity();
 
     std::shared_ptr<core::SlamProcessor> slam_processor_;
 };

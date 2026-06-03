@@ -32,6 +32,7 @@ public:
     virtual std::vector<Keyframe::SharedPtr> getAllKeyframes() const = 0;
     virtual std::optional<Keyframe::SharedPtr> getKeyframe(uint64_t id) const = 0;
     virtual std::optional<Keyframe::SharedPtr> getLatestKeyframe() const = 0;
+    virtual size_t getKeyframeCount() const = 0;
 
     /// Return the full global map as a point cloud (reconstructed from keyframes).
     virtual PointCloudIRTPtr getGlobalMap() const = 0;

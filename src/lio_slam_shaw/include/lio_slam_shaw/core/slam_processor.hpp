@@ -3,6 +3,7 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <deque>
 #include <functional>
 #include <memory>
 #include <mutex>
@@ -14,15 +15,9 @@
 #include "lio_slam_shaw/core/backend.hpp"
 #include "lio_slam_shaw/core/frontend.hpp"
 #include "lio_slam_shaw/core/sensor_data_types.hpp"
+#include "lio_slam_shaw/core/visualization_types.hpp"
 
 namespace lio_slam_shaw::core {
-
-struct VisualizationData {
-    Timestamp timestamp;
-    Eigen::Isometry3d pose_odom;
-    Eigen::Isometry3d T_map_odom;
-    PointCloudIRTConstPtr scan;
-};
 
 class SlamProcessor {
 public:
@@ -30,7 +25,8 @@ public:
     using ConstSharedPtr = std::shared_ptr<const SlamProcessor>;
 
     using OdometryCallback = std::function<void(const NavState& odom_state)>;
-    using VisualizationCallback = std::function<void(const VisualizationData& viz_data)>;
+    using LocalVizCallback = std::function<void(const LocalVizData& data)>;
+    using GlobalVizCallback = std::function<void(const GlobalVizData& data)>;
 
     explicit SlamProcessor(FrontEnd::SharedPtr frontend, BackEnd::SharedPtr backend);
     ~SlamProcessor();
@@ -43,12 +39,14 @@ public:
     void feedImu(const ImuData& imu);
 
     void registerOdometryCallback(const OdometryCallback& callback);
-    void registerVisualizationCallback(const VisualizationCallback& callback);
+    void registerLocalVizCallback(const LocalVizCallback& callback);
+    void registerGlobalVizCallback(const GlobalVizCallback& callback);
 
 private:
     void frontendThread();
     void backendThread();
-    void visualizationThread();
+    void localVizThread();
+    void globalVizThread();
 
     FrontEnd::SharedPtr front_end_;
     BackEnd::SharedPtr back_end_;
@@ -56,7 +54,8 @@ private:
     std::atomic<bool> run_{false};
     std::thread frontend_thread_;
     std::thread backend_thread_;
-    std::thread visualization_thread_;
+    std::thread local_viz_thread_;
+    std::thread global_viz_thread_;
 
     std::mutex sync_mutex_;
     std::condition_variable sync_cv_;
@@ -67,12 +66,20 @@ private:
     std::queue<Keyframe::SharedPtr> keyframe_queue_;
     std::shared_mutex map_mutex_;
 
-    std::mutex viz_mutex_;
-    std::condition_variable viz_cv_;
-    std::deque<core::VisualizationData> viz_queue_;
+    std::mutex local_viz_mutex_;
+    std::condition_variable local_viz_cv_;
+    std::deque<LocalVizData> local_viz_queue_;
+
+    std::mutex global_viz_mutex_;
+    std::condition_variable global_viz_cv_;
+    std::deque<GlobalVizData> global_viz_queue_;
 
     OdometryCallback odom_callback_;
-    VisualizationCallback viz_callback_;
+    LocalVizCallback local_viz_callback_;
+    GlobalVizCallback global_viz_callback_;
+
+    size_t global_map_publish_interval_ = 5;  // assemble global map every N keyframes
+    size_t keyframe_count_since_last_map_ = 0;
 };
 
 }  // namespace lio_slam_shaw::core

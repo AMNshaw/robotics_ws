@@ -56,26 +56,38 @@ std::optional<core::Keyframe::SharedPtr> KeyframeGlobalMapBuilder::getLatestKeyf
     return keyframes_.back();
 }
 
+size_t KeyframeGlobalMapBuilder::getKeyframeCount() const {
+    std::shared_lock<std::shared_mutex> lock(keyframe_mutex_);
+    return keyframes_.size();
+}
+
 core::PointCloudIRTPtr KeyframeGlobalMapBuilder::getGlobalMap() const {
     std::shared_lock<std::shared_mutex> lock(keyframe_mutex_);
     auto cloud = std::make_shared<core::PointCloudIRT>();
 
-    size_t total = 0;
-    for (const auto& kf : keyframes_) {
-        if (kf->cloud_body) total += kf->cloud_body->size();
+    const int n_kf = static_cast<int>(keyframes_.size());
+    // Compute prefix offsets for parallel write
+    std::vector<size_t> offsets(n_kf + 1, 0);
+    for (int i = 0; i < n_kf; ++i) {
+        offsets[i + 1] =
+            offsets[i] + (keyframes_[i]->cloud_body ? keyframes_[i]->cloud_body->size() : 0);
     }
-    cloud->reserve(total);
+    cloud->resize(offsets[n_kf]);
 
-    for (const auto& kf : keyframes_) {
+#pragma omp parallel for schedule(dynamic)
+    for (int i = 0; i < n_kf; ++i) {
+        const auto& kf = keyframes_[i];
         if (!kf->cloud_body || kf->cloud_body->empty()) continue;
         const Eigen::Isometry3d T = kf->pose * params_.T_base_lidar;
-        for (const auto& p : *kf->cloud_body) {
+        size_t offset = offsets[i];
+        for (size_t j = 0; j < kf->cloud_body->size(); ++j) {
+            const auto& p = (*kf->cloud_body)[j];
             Eigen::Vector3d pw = T * Eigen::Vector3d(p.x, p.y, p.z);
             core::PointXYZIRT pt = p;
             pt.x = static_cast<float>(pw.x());
             pt.y = static_cast<float>(pw.y());
             pt.z = static_cast<float>(pw.z());
-            cloud->push_back(pt);
+            (*cloud)[offset + j] = pt;
         }
     }
     return cloud;

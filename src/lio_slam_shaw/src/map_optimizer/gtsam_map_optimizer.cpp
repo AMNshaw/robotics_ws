@@ -31,26 +31,30 @@ void GtsamMapOptimizer::addKeyframe(uint64_t keyframe_id, const core::ScanMatchR
 
     const gtsam::Key curr_key = static_cast<gtsam::Key>(id_to_key_.size());
     id_to_key_[keyframe_id] = curr_key;
+    id_to_odom_pose_[keyframe_id] = result.pose;
 
     gtsam::NonlinearFactorGraph graph;
     gtsam::Values values;
 
-    const gtsam::Pose3 curr_pose = toGtsamPose(result.pose);
+    const gtsam::Pose3 curr_odom_pose = toGtsamPose(result.pose);
 
     if (!has_first_keyframe_) {
-        graph.add(gtsam::PriorFactor<gtsam::Pose3>(X(curr_key), curr_pose, prior_noise_));
+        graph.add(gtsam::PriorFactor<gtsam::Pose3>(X(curr_key), curr_odom_pose, prior_noise_));
+        values.insert(X(curr_key), curr_odom_pose);
         has_first_keyframe_ = true;
     } else {
         const gtsam::Key prev_key = id_to_key_.at(last_keyframe_id_);
-        const gtsam::Pose3 prev_pose = toGtsamPose(id_to_pose_.at(last_keyframe_id_));
-        const gtsam::Pose3 relative_pose = prev_pose.between(curr_pose);
+        const gtsam::Pose3 prev_odom_pose = toGtsamPose(id_to_odom_pose_.at(last_keyframe_id_));
+        const gtsam::Pose3 relative_pose = prev_odom_pose.between(curr_odom_pose);
 
         auto noise = result.is_degenerate ? odom_noise_degenerate_ : odom_noise_;
         graph.add(
             gtsam::BetweenFactor<gtsam::Pose3>(X(prev_key), X(curr_key), relative_pose, noise));
-    }
 
-    values.insert(X(curr_key), curr_pose);
+        // Initial value: propagate from optimized previous pose
+        const gtsam::Pose3 prev_optimized = toGtsamPose(id_to_pose_.at(last_keyframe_id_));
+        values.insert(X(curr_key), prev_optimized.compose(relative_pose));
+    }
 
     optimizer_->update(graph, values);
     optimizer_->update();

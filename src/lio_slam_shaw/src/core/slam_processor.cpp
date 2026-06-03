@@ -9,17 +9,20 @@ SlamProcessor::~SlamProcessor() {
     run_.store(false);
     sync_cv_.notify_all();
     backend_cv_.notify_all();
-    viz_cv_.notify_all();
+    local_viz_cv_.notify_all();
+    global_viz_cv_.notify_all();
 
     if (frontend_thread_.joinable()) frontend_thread_.join();
     if (backend_thread_.joinable()) backend_thread_.join();
-    if (visualization_thread_.joinable()) visualization_thread_.join();
+    if (local_viz_thread_.joinable()) local_viz_thread_.join();
+    if (global_viz_thread_.joinable()) global_viz_thread_.join();
 }
 void SlamProcessor::start() {
     run_.store(true);
     frontend_thread_ = std::thread(&SlamProcessor::frontendThread, this);
     backend_thread_ = std::thread(&SlamProcessor::backendThread, this);
-    visualization_thread_ = std::thread(&SlamProcessor::visualizationThread, this);
+    local_viz_thread_ = std::thread(&SlamProcessor::localVizThread, this);
+    global_viz_thread_ = std::thread(&SlamProcessor::globalVizThread, this);
 }
 
 void SlamProcessor::feedLidar(const LidarData& lidar) {
@@ -41,9 +44,12 @@ void SlamProcessor::registerOdometryCallback(const SlamProcessor::OdometryCallba
     odom_callback_ = callback;
 }
 
-void SlamProcessor::registerVisualizationCallback(
-    const SlamProcessor::VisualizationCallback& callback) {
-    viz_callback_ = callback;
+void SlamProcessor::registerLocalVizCallback(const SlamProcessor::LocalVizCallback& callback) {
+    local_viz_callback_ = callback;
+}
+
+void SlamProcessor::registerGlobalVizCallback(const SlamProcessor::GlobalVizCallback& callback) {
+    global_viz_callback_ = callback;
 }
 
 void SlamProcessor::frontendThread() {
@@ -65,16 +71,16 @@ void SlamProcessor::frontendThread() {
             keyframe_to_push = back_end_->tryAddKeyframe(lidar_frame);
 
             {
-                std::lock_guard<std::mutex> viz_lock(viz_mutex_);
-                viz_queue_.emplace_back(VisualizationData{
-                    lidar_frame->timestamp, lidar_frame->state_odom.pose,
-                    back_end_->getGlobalCorrection(), lidar_frame->deskewed_cloud});
+                std::lock_guard<std::mutex> viz_lock(local_viz_mutex_);
+                local_viz_queue_.emplace_back(LocalVizData{lidar_frame->timestamp,
+                                                           lidar_frame->state_odom.pose,
+                                                           lidar_frame->deskewed_cloud});
 
-                if (viz_queue_.size() > 5) {
-                    viz_queue_.pop_front();
+                if (local_viz_queue_.size() > 5) {
+                    local_viz_queue_.pop_front();
                 }
             }
-            viz_cv_.notify_one();
+            local_viz_cv_.notify_one();
         }
         if (keyframe_to_push.has_value()) {
             std::lock_guard<std::mutex> backend_lock(backend_mutex_);
@@ -98,24 +104,58 @@ void SlamProcessor::backendThread() {
 
         back_end_->processKeyframe(keyframe);
         back_end_->updateGlobalCorrection();
+
+        // Push global visualization data
+        ++keyframe_count_since_last_map_;
+        PointCloudIRTPtr map_cloud = nullptr;
+        if (keyframe_count_since_last_map_ >= global_map_publish_interval_) {
+            map_cloud = back_end_->getGlobalMap();
+            keyframe_count_since_last_map_ = 0;
+        }
+        {
+            std::lock_guard<std::mutex> lock(global_viz_mutex_);
+            global_viz_queue_.emplace_back(GlobalVizData{back_end_->getGlobalCorrection(),
+                                                         back_end_->getAllKeyframePoses(),
+                                                         back_end_->getLoopEdges(), map_cloud});
+
+            if (global_viz_queue_.size() > 2) {
+                global_viz_queue_.pop_front();
+            }
+        }
+        global_viz_cv_.notify_one();
     }
 }
 
-void SlamProcessor::visualizationThread() {
+void SlamProcessor::localVizThread() {
     while (run_.load()) {
-        std::unique_lock<std::mutex> lock(viz_mutex_);
-        viz_cv_.wait(lock, [this] { return !viz_queue_.empty() || !run_.load(); });
+        std::unique_lock<std::mutex> lock(local_viz_mutex_);
+        local_viz_cv_.wait(lock, [this] { return !local_viz_queue_.empty() || !run_.load(); });
 
-        if (!run_.load() && viz_queue_.empty()) {
-            break;
-        }
+        if (!run_.load() && local_viz_queue_.empty()) break;
 
-        auto viz_data = viz_queue_.front();
-        viz_queue_.pop_front();
-
+        auto data = local_viz_queue_.front();
+        local_viz_queue_.pop_front();
         lock.unlock();
-        if (viz_callback_) {
-            viz_callback_(viz_data);
+
+        if (local_viz_callback_) {
+            local_viz_callback_(data);
+        }
+    }
+}
+
+void SlamProcessor::globalVizThread() {
+    while (run_.load()) {
+        std::unique_lock<std::mutex> lock(global_viz_mutex_);
+        global_viz_cv_.wait(lock, [this] { return !global_viz_queue_.empty() || !run_.load(); });
+
+        if (!run_.load() && global_viz_queue_.empty()) break;
+
+        auto data = global_viz_queue_.front();
+        global_viz_queue_.pop_front();
+        lock.unlock();
+
+        if (global_viz_callback_) {
+            global_viz_callback_(data);
         }
     }
 }

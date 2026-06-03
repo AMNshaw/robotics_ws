@@ -139,13 +139,19 @@ SlamNode::SlamNode(const rclcpp::NodeOptions& options) : Node("lio_slam_shaw_nod
         publishOdometry(odom_state);
         publishPath(odom_state);
     });
-    slam_processor_->registerVisualizationCallback(
-        [this](const core::VisualizationData& viz_data) { publishVisualization(viz_data); });
+    slam_processor_->registerLocalVizCallback(
+        [this](const core::LocalVizData& data) { publishLocalViz(data); });
+    slam_processor_->registerGlobalVizCallback(
+        [this](const core::GlobalVizData& data) { publishGlobalViz(data); });
 
     // Creating publishers for odometry and visualization
     odom_publisher_ = create_publisher<nav_msgs::msg::Odometry>("odom", 10);
     cloud_publisher_ = create_publisher<sensor_msgs::msg::PointCloud2>("scan", 10);
     path_publisher_ = create_publisher<nav_msgs::msg::Path>("path", 10);
+    keyframe_path_publisher_ = create_publisher<nav_msgs::msg::Path>("keyframe_path", 10);
+    loop_marker_publisher_ =
+        create_publisher<visualization_msgs::msg::MarkerArray>("loop_closure_markers", 10);
+    global_map_publisher_ = create_publisher<sensor_msgs::msg::PointCloud2>("global_map", 10);
 
     imu_subscription_ = create_subscription<sensor_msgs::msg::Imu>(
         imu_topic, 100, std::bind(&SlamNode::imuCallback, this, std::placeholders::_1));
@@ -229,6 +235,24 @@ void SlamNode::publishOdometry(const core::NavState& odom_state) {
     tf_msg.transform.rotation = quat;
 
     tf_broadcaster_->sendTransform(tf_msg);
+
+    // Publish map → odom at odom rate for RViz TF continuity
+    {
+        std::lock_guard<std::mutex> lock(T_map_odom_mutex_);
+        geometry_msgs::msg::TransformStamped map_odom_tf;
+        map_odom_tf.header.stamp = odom_msg.header.stamp;
+        map_odom_tf.header.frame_id = "map";
+        map_odom_tf.child_frame_id = "odom";
+        map_odom_tf.transform.translation.x = T_map_odom_.translation().x();
+        map_odom_tf.transform.translation.y = T_map_odom_.translation().y();
+        map_odom_tf.transform.translation.z = T_map_odom_.translation().z();
+        Eigen::Quaterniond mq(T_map_odom_.rotation());
+        map_odom_tf.transform.rotation.x = mq.x();
+        map_odom_tf.transform.rotation.y = mq.y();
+        map_odom_tf.transform.rotation.z = mq.z();
+        map_odom_tf.transform.rotation.w = mq.w();
+        tf_broadcaster_->sendTransform(map_odom_tf);
+    }
 }
 
 void SlamNode::publishPath(const core::NavState& odom_state) {
@@ -272,28 +296,81 @@ void SlamNode::publishPath(const core::NavState& odom_state) {
     }
 }
 
-void SlamNode::publishVisualization(const core::VisualizationData& viz_data) {
+void SlamNode::publishLocalViz(const core::LocalVizData& data) {
     auto cloud_msg = std::make_shared<sensor_msgs::msg::PointCloud2>();
-
-    geometry_msgs::msg::TransformStamped tf_msg;
-    tf_msg.header.stamp = coreToRos(viz_data.timestamp);
-    tf_msg.header.frame_id = "map";
-    tf_msg.child_frame_id = "odom";
-    tf_msg.transform.translation.x = viz_data.T_map_odom.translation().x();
-    tf_msg.transform.translation.y = viz_data.T_map_odom.translation().y();
-    tf_msg.transform.translation.z = viz_data.T_map_odom.translation().z();
-    Eigen::Quaterniond q(viz_data.T_map_odom.rotation());
-    tf_msg.transform.rotation.x = q.x();
-    tf_msg.transform.rotation.y = q.y();
-    tf_msg.transform.rotation.z = q.z();
-    tf_msg.transform.rotation.w = q.w();
-
-    tf_broadcaster_->sendTransform(tf_msg);
-
-    pcl::toROSMsg(*(viz_data.scan), *cloud_msg);
-    cloud_msg->header.stamp = coreToRos(viz_data.timestamp);
+    pcl::toROSMsg(*(data.scan), *cloud_msg);
+    cloud_msg->header.stamp = coreToRos(data.timestamp);
     cloud_msg->header.frame_id = lidar_frame_id_;
     cloud_publisher_->publish(*cloud_msg);
+}
+
+void SlamNode::publishGlobalViz(const core::GlobalVizData& data) {
+    // Update T_map_odom (consumed by publishOdometry at high rate)
+    {
+        std::lock_guard<std::mutex> lock(T_map_odom_mutex_);
+        T_map_odom_ = data.T_map_odom;
+    }
+
+    // Publish keyframe path
+    nav_msgs::msg::Path keyframe_path;
+    keyframe_path.header.stamp = this->get_clock()->now();
+    keyframe_path.header.frame_id = "map";
+    for (const auto& [id, pose] : data.keyframe_poses) {
+        geometry_msgs::msg::PoseStamped ps;
+        ps.header = keyframe_path.header;
+        ps.pose.position.x = pose.translation().x();
+        ps.pose.position.y = pose.translation().y();
+        ps.pose.position.z = pose.translation().z();
+        Eigen::Quaterniond kq(pose.rotation());
+        ps.pose.orientation.x = kq.x();
+        ps.pose.orientation.y = kq.y();
+        ps.pose.orientation.z = kq.z();
+        ps.pose.orientation.w = kq.w();
+        keyframe_path.poses.push_back(ps);
+    }
+    keyframe_path_publisher_->publish(keyframe_path);
+
+    // Publish loop closure markers
+    if (!data.loop_edges.empty()) {
+        visualization_msgs::msg::MarkerArray marker_array;
+        int marker_id = 0;
+        for (const auto& edge : data.loop_edges) {
+            visualization_msgs::msg::Marker marker;
+            marker.header.stamp = this->get_clock()->now();
+            marker.header.frame_id = "map";
+            marker.ns = "loop_closure";
+            marker.id = marker_id++;
+            marker.type = visualization_msgs::msg::Marker::LINE_STRIP;
+            marker.action = visualization_msgs::msg::Marker::ADD;
+            marker.scale.x = 0.1;
+            marker.color.r = 1.0;
+            marker.color.g = 0.0;
+            marker.color.b = 0.0;
+            marker.color.a = 1.0;
+
+            geometry_msgs::msg::Point p1, p2;
+            p1.x = edge.from_position.x();
+            p1.y = edge.from_position.y();
+            p1.z = edge.from_position.z();
+            p2.x = edge.to_position.x();
+            p2.y = edge.to_position.y();
+            p2.z = edge.to_position.z();
+            marker.points.push_back(p1);
+            marker.points.push_back(p2);
+
+            marker_array.markers.push_back(marker);
+        }
+        loop_marker_publisher_->publish(marker_array);
+    }
+
+    // Publish global map if assembled this round
+    if (data.global_map && !data.global_map->empty()) {
+        auto map_msg = std::make_shared<sensor_msgs::msg::PointCloud2>();
+        pcl::toROSMsg(*data.global_map, *map_msg);
+        map_msg->header.stamp = this->get_clock()->now();
+        map_msg->header.frame_id = "map";
+        global_map_publisher_->publish(*map_msg);
+    }
 }
 
 }  // namespace lio_slam_shaw
