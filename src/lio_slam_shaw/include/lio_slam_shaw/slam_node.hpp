@@ -13,6 +13,7 @@
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
+#include <std_srvs/srv/trigger.hpp>
 #include <visualization_msgs/msg/marker_array.hpp>
 
 #include "lio_slam_shaw/core/sensor_data_types.hpp"
@@ -51,6 +52,13 @@ private:
     void publishLocalViz(const core::LocalVizData& data);
 
     void publishGlobalViz(const core::GlobalVizData& data);
+
+    void saveMapCallback(const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+                         std::shared_ptr<std_srvs::srv::Trigger::Response> response);
+
+    rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr save_map_service_;
+    std::string save_map_path_;
+    double save_map_leaf_size_ = 0.2;
 
     std::shared_ptr<rclcpp::Publisher<nav_msgs::msg::Odometry>> odom_publisher_;
     std::shared_ptr<rclcpp::Publisher<sensor_msgs::msg::PointCloud2>> cloud_publisher_;

@@ -42,6 +42,8 @@ public:
     void registerLocalVizCallback(const LocalVizCallback& callback);
     void registerGlobalVizCallback(const GlobalVizCallback& callback);
 
+    PointCloudIRTPtr getGlobalMap() const { return back_end_->getGlobalMap(); }
+
 private:
     void frontendThread();
     void backendThread();

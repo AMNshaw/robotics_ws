@@ -1,6 +1,7 @@
 #include "lio_slam_shaw/slam_node.hpp"
 
 #include <pcl/filters/voxel_grid.h>
+#include <pcl/io/pcd_io.h>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 
@@ -161,6 +162,13 @@ SlamNode::SlamNode(const rclcpp::NodeOptions& options) : Node("lio_slam_shaw_nod
         imu_topic, 100, std::bind(&SlamNode::imuCallback, this, std::placeholders::_1));
 
     tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
+
+    // Save map service
+    save_map_path_ = declare_parameter<std::string>("save_map_path", "/tmp/global_map.pcd");
+    save_map_leaf_size_ = declare_parameter<double>("save_map_leaf_size", 0.2);
+    save_map_service_ = create_service<std_srvs::srv::Trigger>(
+        "~/save_map",
+        std::bind(&SlamNode::saveMapCallback, this, std::placeholders::_1, std::placeholders::_2));
 
     // Starting the SlamProcessor
     slam_processor_->start();
@@ -379,6 +387,40 @@ void SlamNode::publishGlobalViz(const core::GlobalVizData& data) {
         map_msg->header.stamp = this->get_clock()->now();
         map_msg->header.frame_id = "map";
         global_map_publisher_->publish(*map_msg);
+    }
+}
+
+void SlamNode::saveMapCallback(const std::shared_ptr<std_srvs::srv::Trigger::Request> /*request*/,
+                               std::shared_ptr<std_srvs::srv::Trigger::Response> response) {
+    RCLCPP_INFO(get_logger(), "Save map requested, assembling global map...");
+
+    auto cloud = slam_processor_->getGlobalMap();
+    if (!cloud || cloud->empty()) {
+        response->success = false;
+        response->message = "Global map is empty";
+        RCLCPP_WARN(get_logger(), "Save map failed: global map is empty");
+        return;
+    }
+
+    // Voxel filter
+    pcl::VoxelGrid<core::PointXYZIRT> voxel;
+    voxel.setLeafSize(save_map_leaf_size_, save_map_leaf_size_, save_map_leaf_size_);
+    voxel.setInputCloud(cloud);
+    auto filtered = std::make_shared<core::PointCloudIRT>();
+    voxel.filter(*filtered);
+
+    // Save PCD
+    const std::string path = save_map_path_;
+    int ret = pcl::io::savePCDFileBinaryCompressed(path, *filtered);
+    if (ret == 0) {
+        response->success = true;
+        response->message =
+            "Map saved to " + path + " (" + std::to_string(filtered->size()) + " points)";
+        RCLCPP_INFO(get_logger(), "%s", response->message.c_str());
+    } else {
+        response->success = false;
+        response->message = "Failed to write PCD file: " + path;
+        RCLCPP_ERROR(get_logger(), "%s", response->message.c_str());
     }
 }
 
