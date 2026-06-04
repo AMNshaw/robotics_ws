@@ -12,8 +12,7 @@ ScanContextManager::ScanContextManager(const ScanContextParams& params) : params
 
 // ---------------------------------------------------------------------------
 
-ScDescriptor ScanContextManager::getDescriptor(
-    const core::PointCloudIRTConstPtr& cloud) const {
+ScDescriptor ScanContextManager::getDescriptor(const core::PointCloudIRTConstPtr& cloud) const {
     const float NO_POINT = -1000.0f;
     Eigen::MatrixXf desc = NO_POINT * Eigen::MatrixXf::Ones(params_.num_ring, params_.num_sector);
 
@@ -26,11 +25,11 @@ ScDescriptor ScanContextManager::getDescriptor(
         if (angle_deg < 0.0f) angle_deg += 360.0f;
 
         int ring_idx = std::max(
-            1, std::min(params_.num_ring, static_cast<int>(std::ceil(
-                                             (range / params_.max_radius) * params_.num_ring))));
+            1, std::min(params_.num_ring, static_cast<int>(std::ceil((range / params_.max_radius) *
+                                                                     params_.num_ring))));
         int sect_idx = std::max(
-            1, std::min(params_.num_sector, static_cast<int>(std::ceil(
-                                               (angle_deg / 360.0f) * params_.num_sector))));
+            1, std::min(params_.num_sector,
+                        static_cast<int>(std::ceil((angle_deg / 360.0f) * params_.num_sector))));
 
         float& cell = desc(ring_idx - 1, sect_idx - 1);
         if (cell < z_lifted) cell = z_lifted;
@@ -47,8 +46,7 @@ ScDescriptor ScanContextManager::getDescriptor(
 // ---------------------------------------------------------------------------
 
 std::optional<std::pair<uint64_t, float>> ScanContextManager::findClosest(
-    const ScDescriptor& query,
-    const std::unordered_map<uint64_t, ScDescriptor>& candidates) const {
+    const ScDescriptor& query, const std::unordered_map<uint64_t, ScDescriptor>& candidates) const {
     if (candidates.empty()) return std::nullopt;
 
     // Stage 1: ring-key L2 distance to find top-K candidates
@@ -82,10 +80,16 @@ std::optional<std::pair<uint64_t, float>> ScanContextManager::findClosest(
         }
     }
 
-    if (min_dist >= params_.sc_dist_threshold) return std::nullopt;
+    if (min_dist >= params_.sc_dist_threshold) {
+        std::clog << "[SC] best_dist=" << min_dist << " >= threshold=" << params_.sc_dist_threshold
+                  << " (rejected, best_id=" << best_id << ")\n";
+        return std::nullopt;
+    }
 
-    const float yaw_diff_rad = static_cast<float>(best_shift) *
-                               static_cast<float>(2.0 * M_PI / params_.num_sector);
+    const float yaw_diff_rad =
+        static_cast<float>(best_shift) * static_cast<float>(2.0 * M_PI / params_.num_sector);
+    std::clog << "[SC] MATCHED id=" << best_id << " dist=" << min_dist << " yaw=" << yaw_diff_rad
+              << "rad\n";
     return std::make_pair(best_id, yaw_diff_rad);
 }
 
@@ -145,11 +149,10 @@ int ScanContextManager::fastAlignUsingVkey(const Eigen::RowVectorXf& vk1,
 }
 
 std::pair<double, int> ScanContextManager::distanceBtnSC(const Eigen::MatrixXf& sc1,
-                                                          const Eigen::MatrixXf& sc2) const {
+                                                         const Eigen::MatrixXf& sc2) const {
     const int argmin_shift = fastAlignUsingVkey(makeSectorKey(sc1), makeSectorKey(sc2));
 
-    const int half_range =
-        static_cast<int>(std::round(0.5 * params_.search_ratio * sc1.cols()));
+    const int half_range = static_cast<int>(std::round(0.5 * params_.search_ratio * sc1.cols()));
     std::vector<int> shift_space = {argmin_shift};
     for (int ii = 1; ii <= half_range; ++ii) {
         shift_space.push_back((argmin_shift + ii + sc1.cols()) % sc1.cols());

@@ -2,6 +2,7 @@
 
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/io/pcd_io.h>
+#include <pcl/point_types.h>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 
@@ -409,9 +410,26 @@ void SlamNode::saveMapCallback(const std::shared_ptr<std_srvs::srv::Trigger::Req
     auto filtered = std::make_shared<core::PointCloudIRT>();
     voxel.filter(*filtered);
 
+    // Convert to PointXYZI for saving (drop timestamp and ring)
+    pcl::PointCloud<pcl::PointXYZI>::Ptr standard_cloud(new pcl::PointCloud<pcl::PointXYZI>());
+    standard_cloud->resize(filtered->size());
+    standard_cloud->width = filtered->size();
+    standard_cloud->height = 1;
+    standard_cloud->is_dense = true;
+
+#pragma omp parallel for schedule(static)
+    for (std::size_t i = 0; i < filtered->size(); ++i) {
+        const auto& p = filtered->points[i];
+        auto& pt = standard_cloud->points[i];
+        pt.x = p.x;
+        pt.y = p.y;
+        pt.z = p.z;
+        pt.intensity = p.intensity;
+    }
+
     // Save PCD
     const std::string path = save_map_path_;
-    int ret = pcl::io::savePCDFileBinaryCompressed(path, *filtered);
+    int ret = pcl::io::savePCDFileBinaryCompressed(path, *standard_cloud);
     if (ret == 0) {
         response->success = true;
         response->message =

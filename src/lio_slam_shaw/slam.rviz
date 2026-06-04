@@ -10,6 +10,7 @@ Panels:
         - /PointCloud21
         - /Path1
         - /PointCloud22
+        - /Path2
         - /MarkerArray1
         - /MarkerArray1/Status1
       Splitter Ratio: 0.5
@@ -31,7 +32,7 @@ Panels:
     Experimental: false
     Name: Time
     SyncMode: 0
-    SyncSource: PointCloud2
+    SyncSource: ""
 Visualization Manager:
   Class: ""
   Displays:
@@ -182,7 +183,7 @@ Visualization Manager:
     - Alpha: 1
       Buffer Length: 1
       Class: rviz_default_plugins/Path
-      Color: 25; 255; 0
+      Color: 255; 255; 0
       Enabled: true
       Head Diameter: 0.30000001192092896
       Head Length: 0.20000000298023224
@@ -211,7 +212,7 @@ Visualization Manager:
       Enabled: true
       Name: MarkerArray
       Namespaces:
-        loop_closure: true
+        {}
       Topic:
         Depth: 5
         Durability Policy: Volatile
@@ -265,25 +266,25 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 496.45501708984375
+      Distance: 167.6768798828125
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: -76.15823364257812
-        Y: -59.55976867675781
-        Z: -49.78126525878906
+        X: -19.4494571685791
+        Y: 4.387486457824707
+        Z: -61.96308898925781
       Focal Shape Fixed Size: false
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 1.184795618057251
+      Pitch: 1.364795446395874
       Target Frame: base_link
       Value: Orbit (rviz_default_plugins)
-      Yaw: 6.078587055206299
+      Yaw: 6.168588161468506
     Saved: ~
 Window Geometry:
   Displays:

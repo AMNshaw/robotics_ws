@@ -96,5 +96,5 @@
             max_radius: 80.0
             lidar_height: 1.8
             num_candidates: 10
-            sc_dist_threshold: 0.13
+            sc_dist_threshold: 0.30
             search_ratio: 0.1
