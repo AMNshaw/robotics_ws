@@ -120,24 +120,27 @@ void SlamProcessor::backendThread() {
             }
         }
 
-        // Push global visualization data
-        ++keyframe_count_since_last_map_;
-        PointCloudIRTPtr map_cloud = nullptr;
-        if (keyframe_count_since_last_map_ >= global_map_publish_interval_) {
-            map_cloud = back_end_->getGlobalMap();
-            keyframe_count_since_last_map_ = 0;
-        }
-        {
-            std::lock_guard<std::mutex> lock(global_viz_mutex_);
-            global_viz_queue_.emplace_back(GlobalVizData{back_end_->getGlobalCorrection(),
-                                                         back_end_->getAllKeyframePoses(),
-                                                         back_end_->getLoopEdges(), map_cloud});
-
-            if (global_viz_queue_.size() > 2) {
-                global_viz_queue_.pop_front();
+        // Push global visualization data only when queue is drained (skip_lc=false)
+        // or at map publish interval — avoids expensive getAllKeyframePoses() on every step
+        if (!skip_lc) {
+            ++keyframe_count_since_last_map_;
+            PointCloudIRTPtr map_cloud = nullptr;
+            if (keyframe_count_since_last_map_ >= global_map_publish_interval_) {
+                map_cloud = back_end_->getGlobalMap();
+                keyframe_count_since_last_map_ = 0;
             }
+            {
+                std::lock_guard<std::mutex> lock(global_viz_mutex_);
+                global_viz_queue_.emplace_back(GlobalVizData{back_end_->getGlobalCorrection(),
+                                                             back_end_->getAllKeyframePoses(),
+                                                             back_end_->getLoopEdges(), map_cloud});
+
+                if (global_viz_queue_.size() > 2) {
+                    global_viz_queue_.pop_front();
+                }
+            }
+            global_viz_cv_.notify_one();
         }
-        global_viz_cv_.notify_one();
     }
 }
 

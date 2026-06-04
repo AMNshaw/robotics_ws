@@ -1,5 +1,6 @@
 #include "lio_slam_shaw/map_optimizer/gtsam_map_optimizer.hpp"
 
+#include <gtsam/linear/NoiseModel.h>
 #include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
 
 namespace lio_slam_shaw {
@@ -47,7 +48,19 @@ void GtsamMapOptimizer::addKeyframe(uint64_t keyframe_id, const core::ScanMatchR
         const gtsam::Pose3 prev_odom_pose = toGtsamPose(id_to_odom_pose_.at(last_keyframe_id_));
         const gtsam::Pose3 relative_pose = prev_odom_pose.between(curr_odom_pose);
 
-        auto noise = result.is_degenerate ? odom_noise_degenerate_ : odom_noise_;
+        // Use Fast-LIO covariance when available; fall back to fixed noise if degenerate
+        // Scan matcher covariance is [trans, rot]; GTSAM Pose3 expects [rot, trans]
+        gtsam::SharedNoiseModel noise;
+        if (result.is_degenerate) {
+            noise = odom_noise_degenerate_;
+        } else {
+            Eigen::Matrix<double, 6, 6> cov_gtsam;
+            cov_gtsam.block<3, 3>(0, 0) = result.covariance.block<3, 3>(3, 3);  // rot-rot
+            cov_gtsam.block<3, 3>(0, 3) = result.covariance.block<3, 3>(3, 0);  // rot-trans
+            cov_gtsam.block<3, 3>(3, 0) = result.covariance.block<3, 3>(0, 3);  // trans-rot
+            cov_gtsam.block<3, 3>(3, 3) = result.covariance.block<3, 3>(0, 0);  // trans-trans
+            noise = gtsam::noiseModel::Gaussian::Covariance(cov_gtsam);
+        }
         graph.add(
             gtsam::BetweenFactor<gtsam::Pose3>(X(prev_key), X(curr_key), relative_pose, noise));
 
@@ -59,12 +72,9 @@ void GtsamMapOptimizer::addKeyframe(uint64_t keyframe_id, const core::ScanMatchR
     optimizer_->update(graph, values);
     optimizer_->update();
 
-    const gtsam::Values estimate = optimizer_->calculateBestEstimate();
-    for (const auto& [id, key] : id_to_key_) {
-        if (estimate.exists(X(key))) {
-            id_to_pose_[id] = fromGtsamPose(estimate.at<gtsam::Pose3>(X(key)));
-        }
-    }
+    // Only extract the newly added keyframe's estimate (O(1) instead of O(n))
+    id_to_pose_[keyframe_id] =
+        fromGtsamPose(optimizer_->calculateEstimate<gtsam::Pose3>(X(curr_key)));
 
     last_keyframe_id_ = keyframe_id;
 }
@@ -79,7 +89,10 @@ void GtsamMapOptimizer::addLoopConstraint(const core::LoopConstraint& constraint
     const gtsam::Key from_key = from_it->second;
     const gtsam::Key to_key = to_it->second;
 
-    auto noise = gtsam::noiseModel::Gaussian::Covariance(constraint.covariance);
+    auto gaussian = gtsam::noiseModel::Gaussian::Covariance(constraint.covariance);
+    // Wrap with Cauchy robust kernel to suppress outlier loop closures
+    auto noise = gtsam::noiseModel::Robust::Create(
+        gtsam::noiseModel::mEstimator::Cauchy::Create(1.0), gaussian);
 
     loop_graph_.add(gtsam::BetweenFactor<gtsam::Pose3>(
         X(from_key), X(to_key), toGtsamPose(constraint.relative_pose), noise));

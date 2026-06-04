@@ -156,6 +156,7 @@ std::optional<core::LoopConstraint> ScanContextLoopClosureDetector::refineWithIC
     // Relative pose
     const Eigen::Isometry3d T_gicp(gicp.getFinalTransformation().cast<double>());
     const Eigen::Isometry3d T_w_from = T_gicp * T_init;
+
     const Eigen::Isometry3d relative_pose = T_w_from.inverse() * candidate->pose;
 
     const double scale = 1.0 + score;
