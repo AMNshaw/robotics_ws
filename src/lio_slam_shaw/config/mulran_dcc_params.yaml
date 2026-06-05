@@ -97,4 +97,5 @@
             lidar_height: 1.8
             num_candidates: 10
             sc_dist_threshold: 0.30
-            search_ratio: 0.1
+            search_ratio: 0.1            
+            enable_reverse_search: true

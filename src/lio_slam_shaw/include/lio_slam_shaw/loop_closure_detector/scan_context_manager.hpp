@@ -15,15 +15,16 @@ struct ScanContextParams {
     int num_sector = 60;
     double max_radius = 80.0;
     double lidar_height = 2.0;
-    int num_candidates = 10;        // top-K ring key pre-filter inside findClosest
+    int num_candidates = 10;  // top-K ring key pre-filter inside findClosest
     double sc_dist_threshold = 0.13;
-    double search_ratio = 0.1;      // half-range for circular shift refinement
+    double search_ratio = 0.1;           // half-range for circular shift refinement
+    bool enable_reverse_search = false;  // SC++: also try column-reversed descriptor
 };
 
 /// SC descriptor returned by getDescriptor().
 struct ScDescriptor {
-    Eigen::MatrixXf mat;         ///< SC matrix (num_ring x num_sector)
-    std::vector<float> ring_key; ///< row-wise mean, for fast pre-filtering
+    Eigen::MatrixXf mat;          ///< SC matrix (num_ring x num_sector)
+    std::vector<float> ring_key;  ///< row-wise mean, for fast pre-filtering
 };
 
 /// Pure-computation Scan Context engine.  Stateless.
@@ -47,10 +48,9 @@ private:
     Eigen::VectorXf makeRingKey(const Eigen::MatrixXf& desc) const;
     Eigen::RowVectorXf makeSectorKey(const Eigen::MatrixXf& desc) const;
     std::pair<double, int> distanceBtnSC(const Eigen::MatrixXf& sc1,
-                                          const Eigen::MatrixXf& sc2) const;
+                                         const Eigen::MatrixXf& sc2) const;
     double distDirectSC(const Eigen::MatrixXf& sc1, const Eigen::MatrixXf& sc2) const;
-    int fastAlignUsingVkey(const Eigen::RowVectorXf& vk1,
-                           const Eigen::RowVectorXf& vk2) const;
+    int fastAlignUsingVkey(const Eigen::RowVectorXf& vk1, const Eigen::RowVectorXf& vk2) const;
     static Eigen::MatrixXf circshift(const Eigen::MatrixXf& mat, int n);
 
     ScanContextParams params_;

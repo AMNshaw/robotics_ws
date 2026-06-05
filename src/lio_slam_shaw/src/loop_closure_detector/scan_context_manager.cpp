@@ -72,11 +72,24 @@ std::optional<std::pair<uint64_t, float>> ScanContextManager::findClosest(
     for (int i = 0; i < k; ++i) {
         const uint64_t cand_id = ring_dists[i].second;
         const auto it = candidates.find(cand_id);
+
+        // Normal direction
         auto [dist, shift] = distanceBtnSC(query.mat, it->second.mat);
         if (dist < min_dist) {
             min_dist = dist;
             best_shift = shift;
             best_id = cand_id;
+        }
+
+        // SC++ reverse: mirror sectors to handle opposite-direction revisit
+        if (params_.enable_reverse_search) {
+            const Eigen::MatrixXf flipped = it->second.mat.rowwise().reverse();
+            auto [dist_r, shift_r] = distanceBtnSC(query.mat, flipped);
+            if (dist_r < min_dist) {
+                min_dist = dist_r;
+                best_shift = params_.num_sector - shift_r;  // compensate flip
+                best_id = cand_id;
+            }
         }
     }
 

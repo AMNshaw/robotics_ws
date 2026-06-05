@@ -58,6 +58,8 @@ core::ILoopClosureDetector::SharedPtr LoopClosureDetectorFactory::create(rclcpp:
             "backend.loop_closure.scan_context.sc_dist_threshold", 0.13);
         sc.search_ratio =
             node->declare_parameter<double>("backend.loop_closure.scan_context.search_ratio", 0.1);
+        sc.enable_reverse_search = node->declare_parameter<bool>(
+            "backend.loop_closure.scan_context.enable_reverse_search", false);
 
         ScanContextLoopClosureDetectorParams params;
         params.min_time_gap_sec =
