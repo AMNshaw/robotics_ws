@@ -9,9 +9,13 @@
 
 namespace lio_slam_shaw_ros2::factory {
 
+namespace core = lio_slam_shaw::core;
+namespace map_builder = lio_slam_shaw::map_builder;
+namespace scan_matcher = lio_slam_shaw::scan_matcher;
+
 class RosScanMatcherFactory : public lio_slam_shaw::scan_matcher::IScanMatcherFactory {
 public:
-    RosScanMatcherFactory(rclcpp::Node* node);
+    RosScanMatcherFactory(rclcpp::Node* node) : node_(node) {}
 
     lio_slam_shaw::core::IScanMatcher::SharedPtr create(
         const Eigen::Isometry3d& T_base_lidar,

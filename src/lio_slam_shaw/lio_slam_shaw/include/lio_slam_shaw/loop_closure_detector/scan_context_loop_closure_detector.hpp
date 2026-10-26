@@ -8,23 +8,24 @@
 #include "lio_slam_shaw/core/i_loop_closure_detector.hpp"
 #include "lio_slam_shaw/loop_closure_detector/scan_context_manager.hpp"
 
-namespace lio_slam_shaw {
-
-struct ScanContextLoopClosureDetectorParams {
-    double min_time_gap_sec = 30.0;
-    int local_map_keyframe_num = 15;
-    float icp_downsample_leaf = 0.4f;
-    double icp_max_corr_dist = 1.5;
-    int icp_max_iterations = 100;
-    double fitness_score_threshold = 0.3;
-    double noise_sigma_rot = 0.1;
-    double noise_sigma_trans = 0.1;
-};
+namespace lio_slam_shaw::loop_closure_detector {
 
 class ScanContextLoopClosureDetector : public core::ILoopClosureDetector {
 public:
-    ScanContextLoopClosureDetector(const ScanContextParams& sc_params,
-                                   const ScanContextLoopClosureDetectorParams& params);
+    struct Config {
+        ScanContextManager::Config sc_params;
+
+        double min_time_gap_sec = 30.0;
+        int local_map_keyframe_num = 15;
+        float icp_downsample_leaf = 0.4f;
+        double icp_max_corr_dist = 1.5;
+        int icp_max_iterations = 100;
+        double fitness_score_threshold = 0.3;
+        double noise_sigma_rot = 0.1;
+        double noise_sigma_trans = 0.1;
+    };
+
+    explicit ScanContextLoopClosureDetector(const Config& params);
     ~ScanContextLoopClosureDetector() override = default;
 
     std::optional<core::LoopConstraint> detect(
@@ -48,10 +49,10 @@ private:
         const std::vector<core::Keyframe::SharedPtr>& history_keyframes) const;
 
     std::unique_ptr<ScanContextManager> sc_manager_;
-    ScanContextLoopClosureDetectorParams params_;
+    Config params_;
 
     // Descriptor store: keyframe id -> ScDescriptor
     std::unordered_map<uint64_t, ScDescriptor> descriptors_;
 };
 
-}  // namespace lio_slam_shaw
+}  // namespace lio_slam_shaw::loop_closure_detector

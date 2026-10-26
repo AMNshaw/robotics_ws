@@ -17,6 +17,7 @@ namespace lio_slam_shaw::core {
 class IGlobalMapBuilder {
 public:
     using SharedPtr = std::shared_ptr<IGlobalMapBuilder>;
+    using UniquePtr = std::shared_ptr<IGlobalMapBuilder>;
     using ConstSharedPtr = std::shared_ptr<const IGlobalMapBuilder>;
 
     virtual ~IGlobalMapBuilder() = default;

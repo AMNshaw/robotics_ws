@@ -6,9 +6,9 @@
 #include <limits>
 #include <numeric>
 
-namespace lio_slam_shaw {
+namespace lio_slam_shaw::loop_closure_detector {
 
-ScanContextManager::ScanContextManager(const ScanContextParams& params) : params_(params) {}
+ScanContextManager::ScanContextManager(const Config& params) : params_(params) {}
 
 // ---------------------------------------------------------------------------
 
@@ -184,4 +184,4 @@ std::pair<double, int> ScanContextManager::distanceBtnSC(const Eigen::MatrixXf& 
     return {min_dist, best_shift};
 }
 
-}  // namespace lio_slam_shaw
+}  // namespace lio_slam_shaw::loop_closure_detector

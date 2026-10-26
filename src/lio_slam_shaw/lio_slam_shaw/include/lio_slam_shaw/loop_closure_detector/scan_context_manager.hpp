@@ -8,18 +8,7 @@
 
 #include "lio_slam_shaw/core/sensor_data_types.hpp"
 
-namespace lio_slam_shaw {
-
-struct ScanContextParams {
-    int num_ring = 20;
-    int num_sector = 60;
-    double max_radius = 80.0;
-    double lidar_height = 2.0;
-    int num_candidates = 10;  // top-K ring key pre-filter inside findClosest
-    double sc_dist_threshold = 0.13;
-    double search_ratio = 0.1;           // half-range for circular shift refinement
-    bool enable_reverse_search = false;  // SC++: also try column-reversed descriptor
-};
+namespace lio_slam_shaw::loop_closure_detector {
 
 /// SC descriptor returned by getDescriptor().
 struct ScDescriptor {
@@ -30,7 +19,18 @@ struct ScDescriptor {
 /// Pure-computation Scan Context engine.  Stateless.
 class ScanContextManager {
 public:
-    explicit ScanContextManager(const ScanContextParams& params = {});
+    struct Config {
+        int num_ring = 20;
+        int num_sector = 60;
+        double max_radius = 80.0;
+        double lidar_height = 2.0;
+        int num_candidates = 10;  // top-K ring key pre-filter inside findClosest
+        double sc_dist_threshold = 0.13;
+        double search_ratio = 0.1;           // half-range for circular shift refinement
+        bool enable_reverse_search = false;  // SC++: also try column-reversed descriptor
+    };
+
+    explicit ScanContextManager(const Config& params = {});
 
     /// Compute SC descriptor from a PCL cloud (body/LiDAR frame).
     ScDescriptor getDescriptor(const core::PointCloudIRTConstPtr& cloud) const;
@@ -42,7 +42,7 @@ public:
         const ScDescriptor& query,
         const std::unordered_map<uint64_t, ScDescriptor>& candidates) const;
 
-    const ScanContextParams& params() const { return params_; }
+    const Config& params() const { return params_; }
 
 private:
     Eigen::VectorXf makeRingKey(const Eigen::MatrixXf& desc) const;
@@ -53,7 +53,7 @@ private:
     int fastAlignUsingVkey(const Eigen::RowVectorXf& vk1, const Eigen::RowVectorXf& vk2) const;
     static Eigen::MatrixXf circshift(const Eigen::MatrixXf& mat, int n);
 
-    ScanContextParams params_;
+    Config params_;
 };
 
-}  // namespace lio_slam_shaw
+}  // namespace lio_slam_shaw::loop_closure_detector

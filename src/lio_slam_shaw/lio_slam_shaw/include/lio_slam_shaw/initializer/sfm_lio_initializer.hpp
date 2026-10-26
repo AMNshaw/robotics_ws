@@ -14,23 +14,6 @@
 
 namespace lio_slam_shaw::initializer {
 
-struct SfmLioInitializerParams {
-    int min_init_scans = 10;  // minimum scans before attempting linear alignment
-
-    // If true, rotate the LiDAR SFM frame to the gravity direction solved from
-    // short-window IMU alignment. For datasets whose base_link/velodyne frame
-    // is already z-up, a noisy short-window gravity estimate can introduce a
-    // large artificial map tilt, so keep this disabled by default.
-    bool align_gravity = false;
-
-    // Voxel downsample leaf size for raw cloud (0 = no downsample)
-    float voxel_leaf_size = 0.5f;
-
-    // IMU noise (for preintegration weighting in linear solve)
-    double acc_noise = 3.9939570888117902e-03;
-    double gyr_noise = 1.5636343949698187e-03;
-};
-
 /// Multi-frame LIO initialiser using scan-to-map SFM + IMU linear alignment.
 ///
 /// Phase 1 (scan-by-scan): Each incoming scan is matched against the ikd-tree
@@ -46,12 +29,21 @@ struct SfmLioInitializerParams {
 ///   gravity direction.
 class SfmLioInitializer : public core::ILioInitializer {
 public:
-    using SharedPtr = std::shared_ptr<SfmLioInitializer>;
+    struct Config {
+        int min_init_scans = 10;
 
-    explicit SfmLioInitializer(const scan_matcher::IkdTreeScanMatcherParams& scan_matcher_params,
-                               const map_builder::IkdTreeLocalMapBuilderParams& map_builder_params,
-                               const Eigen::Isometry3d& T_imu_lidar,
-                               const SfmLioInitializerParams& params = {});
+        bool align_gravity = false;
+
+        float voxel_leaf_size = 0.5f;
+
+        double acc_noise = 3.9939570888117902e-03;
+        double gyr_noise = 1.5636343949698187e-03;
+    };
+
+    explicit SfmLioInitializer(
+        const scan_matcher::IkdTreeScanMatcher::Config& scan_matcher_params,
+        const map_builder::IkdTreeLocalMapBuilder::Config& map_builder_params,
+        const Eigen::Isometry3d& T_imu_lidar, const Config& params = {});
     ~SfmLioInitializer() override = default;
 
     void addImu(const core::ImuData& imu) override;
@@ -105,9 +97,9 @@ private:
                                   std::vector<Eigen::Vector3d>& velocities);
 
     // --- State ---
-    SfmLioInitializerParams params_;
-    map_builder::IkdTreeLocalMapBuilderParams map_builder_params_;
-    scan_matcher::IkdTreeScanMatcherParams scan_matcher_params_;
+    Config params_;
+    map_builder::IkdTreeLocalMapBuilder::Config map_builder_params_;
+    scan_matcher::IkdTreeScanMatcher::Config scan_matcher_params_;
     std::shared_ptr<map_builder::IkdTreeLocalMapBuilder> map_builder_;
     std::shared_ptr<scan_matcher::IkdTreeScanMatcher> scan_matcher_;
     Eigen::Isometry3d T_imu_lidar_;

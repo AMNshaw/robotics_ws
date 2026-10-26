@@ -33,6 +33,9 @@ struct LioInitResult {
 class ILioInitializer {
 public:
     using SharedPtr = std::shared_ptr<ILioInitializer>;
+    using UniquePtr = std::unique_ptr<ILioInitializer>;
+    using ConstSharedPtr = std::shared_ptr<const ILioInitializer>;
+
     virtual ~ILioInitializer() = default;
 
     /// Feed a single IMU measurement.  Buffer only — O(1).

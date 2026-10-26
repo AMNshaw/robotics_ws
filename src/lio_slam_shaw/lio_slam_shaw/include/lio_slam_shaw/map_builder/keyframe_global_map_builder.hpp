@@ -12,18 +12,16 @@
 
 namespace lio_slam_shaw::map_builder {
 
-struct KeyframeGlobalMapBuilderParams {
-    double keyframe_distance_threshold = 1.0;
-    double keyframe_angle_threshold = 0.2;
-    Eigen::Isometry3d T_base_lidar = Eigen::Isometry3d::Identity();
-};
-
 /// Global map builder that manages keyframes as a flat vector + index map.
 class KeyframeGlobalMapBuilder : public core::IGlobalMapBuilder {
 public:
-    using SharedPtr = std::shared_ptr<KeyframeGlobalMapBuilder>;
+    struct Config {
+        double keyframe_distance_threshold = 1.0;
+        double keyframe_angle_threshold = 0.2;
+        Eigen::Isometry3d T_base_lidar = Eigen::Isometry3d::Identity();
+    };
 
-    explicit KeyframeGlobalMapBuilder(const KeyframeGlobalMapBuilderParams& params = {});
+    explicit KeyframeGlobalMapBuilder(const Config& params = {});
     ~KeyframeGlobalMapBuilder() override = default;
 
     std::optional<core::Keyframe::SharedPtr> addKeyFrame(
@@ -41,7 +39,7 @@ public:
 private:
     bool isNewKeyframe(const Eigen::Isometry3d& pose) const;
 
-    KeyframeGlobalMapBuilderParams params_;
+    Config params_;
 
     mutable std::shared_mutex keyframe_mutex_;
     std::vector<core::Keyframe::SharedPtr> keyframes_;

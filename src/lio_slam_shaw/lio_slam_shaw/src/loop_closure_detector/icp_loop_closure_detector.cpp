@@ -16,8 +16,7 @@
 
 namespace lio_slam_shaw {
 
-IcpLoopClosureDetector::IcpLoopClosureDetector(const IcpLoopClosureDetectorParams& params)
-    : params_(params) {}
+IcpLoopClosureDetector::IcpLoopClosureDetector(const Config& params) : params_(params) {}
 
 std::optional<core::LoopConstraint> IcpLoopClosureDetector::detect(
     const core::Keyframe::SharedPtr& current_keyframe,

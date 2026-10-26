@@ -52,9 +52,9 @@ static Eigen::Matrix3d expSO3(const Eigen::Vector3d& phi) {
 // Constructor
 // ===========================================================================
 SfmLioInitializer::SfmLioInitializer(
-    const scan_matcher::IkdTreeScanMatcherParams& scan_matcher_params,
-    const map_builder::IkdTreeLocalMapBuilderParams& map_builder_params,
-    const Eigen::Isometry3d& T_imu_lidar, const SfmLioInitializerParams& params)
+    const scan_matcher::IkdTreeScanMatcher::Config& scan_matcher_params,
+    const map_builder::IkdTreeLocalMapBuilder::Config& map_builder_params,
+    const Eigen::Isometry3d& T_imu_lidar, const Config& params)
     : params_(params),
       map_builder_params_(map_builder_params),
       scan_matcher_params_(scan_matcher_params),

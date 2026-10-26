@@ -8,8 +8,7 @@
 
 namespace lio_slam_shaw::map_builder {
 
-IkdTreeLocalMapBuilder::IkdTreeLocalMapBuilder(const IkdTreeLocalMapBuilderParams& params)
-    : params_(params) {
+IkdTreeLocalMapBuilder::IkdTreeLocalMapBuilder(const Config& params) : params_(params) {
     ikd_tree_ = std::make_shared<KD_TREE<core::PointXYZIRT>>(
         params.ikd_delete_param, params.ikd_balance_param, params.ikd_downsample_size);
 }

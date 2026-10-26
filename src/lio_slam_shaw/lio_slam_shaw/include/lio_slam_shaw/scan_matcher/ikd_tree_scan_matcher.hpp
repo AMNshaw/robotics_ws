@@ -11,24 +11,6 @@
 
 namespace lio_slam_shaw::scan_matcher {
 
-struct IkdTreeScanMatcherParams {
-    int k_neighbors = 3;
-    int max_iterations = 10;
-    double convergence_threshold = 1e-3;
-    int min_valid_points = 50;
-    double degenerate_threshold = 100.0;
-
-    float max_search_dist = 1.0;
-    int min_plane_points = 3;
-    double plane_valid_threshold = 0.1;
-
-    /// Rotation regularization: penalise deviation from IMU-predicted rotation.
-    /// sigma in radians. 0 = disabled.
-    double rot_regularization_sigma = 0.0;
-
-    Eigen::Isometry3d T_base_lidar = Eigen::Isometry3d::Identity();
-};
-
 struct NearestPlaneResult {
     bool valid = false;
     Eigen::Vector3d point_in_map;
@@ -38,10 +20,26 @@ struct NearestPlaneResult {
 
 class IkdTreeScanMatcher : public core::IScanMatcher {
 public:
-    using SharedPtr = std::shared_ptr<IkdTreeScanMatcher>;
+    struct Config {
+        int k_neighbors = 3;
+        int max_iterations = 10;
+        double convergence_threshold = 1e-3;
+        int min_valid_points = 50;
+        double degenerate_threshold = 100.0;
+
+        float max_search_dist = 1.0;
+        int min_plane_points = 3;
+        double plane_valid_threshold = 0.1;
+
+        /// Rotation regularization: penalise deviation from IMU-predicted rotation.
+        /// sigma in radians. 0 = disabled.
+        double rot_regularization_sigma = 0.0;
+
+        Eigen::Isometry3d T_base_lidar = Eigen::Isometry3d::Identity();
+    };
 
     explicit IkdTreeScanMatcher(std::shared_ptr<map_builder::IkdTreeLocalMapBuilder> local_map,
-                                const IkdTreeScanMatcherParams& params = {});
+                                const Config& params = {});
 
     void setLidarExtrinsics(const Eigen::Isometry3d& T_base_lidar) override;
     core::ScanMatchResult match(const core::FeatureSet& features,
@@ -61,7 +59,7 @@ private:
                                 const Eigen::Vector3d& query_point_in_map) const;
 
     std::shared_ptr<map_builder::IkdTreeLocalMapBuilder> local_map_;
-    IkdTreeScanMatcherParams params_;
+    Config params_;
     Eigen::Isometry3d T_base_lidar_ = Eigen::Isometry3d::Identity();
 };
 

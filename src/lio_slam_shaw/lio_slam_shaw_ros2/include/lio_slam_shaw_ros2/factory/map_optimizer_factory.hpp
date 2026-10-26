@@ -7,13 +7,18 @@
 
 namespace lio_slam_shaw_ros2::factory {
 
-class RosMapOptimizerFactory : public lio_slam_shaw::map_optimizer::IMapOptimizerFactory {
-public:
-    RosMapOptimizerFactory(rclcpp::Node* node);
+namespace core = lio_slam_shaw::core;
+namespace map_optimizer = lio_slam_shaw::map_optimizer;
 
-    lio_slam_shaw::core::IMapOptimizer::SharedPtr create() const override;
+class RosMapOptimizerFactory : public map_optimizer::IMapOptimizerFactory {
+public:
+    RosMapOptimizerFactory(rclcpp::Node* node) : node_(node) {}
+
+    core::IMapOptimizer::SharedPtr create(map_optimizer::MapOptimizerType type) const override;
 
 private:
+    core::IMapOptimizer::SharedPtr createGtsamMapOptimizer() const;
+
     rclcpp::Node* node_;
 };
 

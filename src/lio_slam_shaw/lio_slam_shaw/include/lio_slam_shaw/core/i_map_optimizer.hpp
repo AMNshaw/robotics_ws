@@ -12,6 +12,7 @@ namespace lio_slam_shaw::core {
 class IMapOptimizer {
 public:
     using SharedPtr = std::shared_ptr<IMapOptimizer>;
+    using UniquePtr = std::unique_ptr<IMapOptimizer>;
     using ConstSharedPtr = std::shared_ptr<const IMapOptimizer>;
 
     virtual ~IMapOptimizer() = default;

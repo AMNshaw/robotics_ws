@@ -11,8 +11,7 @@
 
 namespace lio_slam_shaw::lidar_preprocessor {
 
-ImuDeskewPreprocessor::ImuDeskewPreprocessor(const ImuDeskewPreprocessorParams& params)
-    : params_(params) {}
+ImuDeskewPreprocessor::ImuDeskewPreprocessor(const Config& params) : params_(params) {}
 namespace {
 
 std::optional<core::NavState> interpolateNavState(const std::vector<core::NavState>& snapshot,

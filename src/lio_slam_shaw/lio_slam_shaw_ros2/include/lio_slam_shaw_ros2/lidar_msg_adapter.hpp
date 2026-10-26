@@ -1,5 +1,5 @@
-#ifndef LIO_SLAM_SHAW__LIDAR_MSG_ADAPTOR__I_LIDAR_MSG_ADAPTER_HPP_
-#define LIO_SLAM_SHAW__LIDAR_MSG_ADAPTOR__I_LIDAR_MSG_ADAPTER_HPP_
+#ifndef LIO_SLAM_SHAW_ROS2__LIDAR_MSG_ADAPTER_HPP_
+#define LIO_SLAM_SHAW_ROS2__LIDAR_MSG_ADAPTER_HPP_
 
 #include <pcl_conversions/pcl_conversions.h>
 
@@ -191,4 +191,4 @@ inline core::LidarData convertLivox(const sensor_msgs::msg::PointCloud2::SharedP
 
 }  // namespace lio_slam_shaw::lidar_msg_adaptor
 
-#endif  // LIO_SLAM_SHAW__LIDAR_MSG_ADAPTOR__I_LIDAR_MSG_ADAPTER_HPP_
+#endif  // LIO_SLAM_SHAW_ROS2__LIDAR_MSG_ADAPTER_HPP_

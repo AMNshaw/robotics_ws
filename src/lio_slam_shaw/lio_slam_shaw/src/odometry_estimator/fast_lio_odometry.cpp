@@ -35,7 +35,7 @@ static core::ImuData interpolateImu(const core::ImuData& before, const core::Imu
 FastLioOdometry::FastLioOdometry(std::shared_ptr<map_builder::IkdTreeLocalMapBuilder> local_map,
                                  const Eigen::Isometry3d& T_base_lidar,
                                  const Eigen::Isometry3d& T_base_imu,
-                                 const FastLioOdometryParams& params)
+                                 const Config& params)
     : params_(params), map_builder_(std::move(local_map)), T_base_lidar_(T_base_lidar) {
     if (!map_builder_) {
         throw std::invalid_argument("FastLioOdometry requires an IkdTreeLocalMapBuilder instance");

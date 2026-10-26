@@ -16,11 +16,10 @@
 #include <pcl/search/impl/kdtree.hpp>
 #include <pcl/search/impl/search.hpp>
 
-namespace lio_slam_shaw {
+namespace lio_slam_shaw::loop_closure_detector {
 
-ScanContextLoopClosureDetector::ScanContextLoopClosureDetector(
-    const ScanContextParams& sc_params, const ScanContextLoopClosureDetectorParams& params)
-    : sc_manager_(std::make_unique<ScanContextManager>(sc_params)), params_(params) {}
+ScanContextLoopClosureDetector::ScanContextLoopClosureDetector(const Config& params)
+    : sc_manager_(std::make_unique<ScanContextManager>(params_.sc_params)), params_(params) {}
 
 // ---------------------------------------------------------------------------
 
@@ -170,4 +169,4 @@ std::optional<core::LoopConstraint> ScanContextLoopClosureDetector::refineWithIC
     return core::LoopConstraint{current_keyframe->id, candidate->id, relative_pose, cov, score};
 }
 
-}  // namespace lio_slam_shaw
+}  // namespace lio_slam_shaw::loop_closure_detector

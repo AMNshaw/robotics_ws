@@ -20,6 +20,11 @@ inline double getDeltaSec(const Timestamp& t_start, const Timestamp& t_end) {
     return diff.count();
 }
 
+struct Extrinsics {
+    Eigen::Isometry3d T_base_lidar = Eigen::Isometry3d::Identity();
+    Eigen::Isometry3d T_base_imu = Eigen::Isometry3d::Identity();
+};
+
 struct NavState {
     Timestamp timestamp;
     Eigen::Isometry3d pose = Eigen::Isometry3d::Identity();

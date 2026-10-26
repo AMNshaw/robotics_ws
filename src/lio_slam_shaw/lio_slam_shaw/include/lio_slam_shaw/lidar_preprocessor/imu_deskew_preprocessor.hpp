@@ -8,22 +8,21 @@
 
 namespace lio_slam_shaw::lidar_preprocessor {
 
-struct ImuDeskewPreprocessorParams {
-    float voxel_leaf_size = 0.5f;
-    Eigen::Isometry3d T_base_lidar = Eigen::Isometry3d::Identity();
-};
-
 class ImuDeskewPreprocessor : public core::IScanPreprocessor {
 public:
-    explicit ImuDeskewPreprocessor(
-        const ImuDeskewPreprocessorParams& params = ImuDeskewPreprocessorParams{});
+    struct Config {
+        float voxel_leaf_size = 0.5f;
+        Eigen::Isometry3d T_base_lidar = Eigen::Isometry3d::Identity();
+    };
+
+    explicit ImuDeskewPreprocessor(const Config& params = Config{});
     ~ImuDeskewPreprocessor() override = default;
 
     core::LidarData processCloud(const std::vector<core::NavState>& nav_state_snapshot,
                                  const core::LidarData& raw_data) override;
 
 private:
-    ImuDeskewPreprocessorParams params_;
+    Config params_;
 };
 
 }  // namespace lio_slam_shaw::lidar_preprocessor

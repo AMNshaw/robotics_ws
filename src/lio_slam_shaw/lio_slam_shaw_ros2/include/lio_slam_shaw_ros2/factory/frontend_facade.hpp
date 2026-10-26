@@ -1,50 +1,36 @@
-#ifndef LIO_SLAM_SHAW__FACTORY__FRONTEND_FACADE_HPP_
-#define LIO_SLAM_SHAW__FACTORY__FRONTEND_FACADE_HPP_
+#ifndef LIO_SLAM_SHAW_ROS2__FACTORY__FRONTEND_FACADE_HPP_
+#define LIO_SLAM_SHAW_ROS2__FACTORY__FRONTEND_FACADE_HPP_
 
-#include <Eigen/Geometry>
-#include <memory>
 #include <rclcpp/rclcpp.hpp>
 
-#include "lio_slam_shaw/core/frontend.hpp"
-#include "lio_slam_shaw/factory/slam_factory.hpp"
-#include "lio_slam_shaw/map_builder/ikd_tree_local_map_builder.hpp"
+#include "lio_slam_shaw/factory/frontend_facade.hpp"
 
-namespace lio_slam_shaw::factory {
+namespace lio_slam_shaw_ros2::factory {
 
-// ---------------------------------------------------------------------------
-// Interface: IFrontEndFacade
-//
-// A Facade encapsulates one coherent FrontEnd algorithm stack (preprocessor +
-// feature extractor + odometry estimator + local map), ensuring that only
-// compatible combinations are assembled.  Algorithm-selection parameters are
-// NOT exposed to users via ROS params; tuning parameters (noise, voxel size,
-// etc.) still are.
-// ---------------------------------------------------------------------------
-class IFrontEndFacade {
+namespace core = lio_slam_shaw::core;
+namespace lidar_preprocessor = lio_slam_shaw::lidar_preprocessor;
+namespace feature_extractor = lio_slam_shaw::feature_extractor;
+namespace map_builder = lio_slam_shaw::map_builder;
+namespace odometry_estimator = lio_slam_shaw::odometry_estimator;
+
+class RosFastLioFrontEndFacade : public lio_slam_shaw::factory::IFastLioFrontEndFacade {
 public:
-    virtual ~IFrontEndFacade() = default;
-
-    // Build and return the fully-wired FrontEnd.
-    virtual core::FrontEnd::SharedPtr create(rclcpp::Node* node, const Extrinsics& extrinsics) = 0;
-};
-
-// ---------------------------------------------------------------------------
-// FastLIOFacade
-//
-// Hardwired stack:
-//   ScanPreprocessor : IMU_DESKEW
-//   FeatureExtractor : PASSTHROUGH
-//   LocalMapBuilder  : IKD_TREE
-//   OdometryEstimator: FAST_LIO
-// ---------------------------------------------------------------------------
-class FastLIOFacade : public IFrontEndFacade {
-public:
-    core::FrontEnd::SharedPtr create(rclcpp::Node* node, const Extrinsics& extrinsics) override;
+    RosFastLioFrontEndFacade(rclcpp::Node* node) : node_(node) {}
 
 private:
-    std::shared_ptr<map_builder::IkdTreeLocalMapBuilder> local_map_;
+    lidar_preprocessor::ImuDeskewPreprocessor::SharedPtr createScanPreprocessor(
+        const Eigen::Isometry3d& T_base_lidar) const override;
+    feature_extractor::PassthroughFeatureExtractor::SharedPtr createFeatureExtractor()
+        const override;
+    map_builder::IkdTreeLocalMapBuilder::SharedPtr createLocalMapBuilder(
+        const Eigen::Isometry3d& T_base_lidar) const override;
+    odometry_estimator::FastLioOdometry::SharedPtr createOdometryEstimator(
+        const Eigen::Isometry3d& T_base_lidar, const Eigen::Isometry3d& T_base_imu,
+        core::ILocalMapBuilder::SharedPtr local_map) const override;
+
+    rclcpp::Node* node_;
 };
 
-}  // namespace lio_slam_shaw::factory
+}  // namespace lio_slam_shaw_ros2::factory
 
-#endif  // LIO_SLAM_SHAW__FACTORY__FRONTEND_FACADE_HPP_
+#endif  // LIO_SLAM_SHAW_ROS2__FACTORY__FRONTEND_FACADE_HPP_

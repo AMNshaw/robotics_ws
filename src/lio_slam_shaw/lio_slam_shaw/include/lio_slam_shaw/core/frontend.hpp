@@ -5,6 +5,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <deque>
+#include <memory>
 #include <mutex>
 #include <thread>
 
@@ -28,6 +29,7 @@ struct FrontEndParams {
 class FrontEnd {
 public:
     using SharedPtr = std::shared_ptr<FrontEnd>;
+    using UniquePtr = std::unique_ptr<FrontEnd>;
     using ConstSharedPtr = std::shared_ptr<const FrontEnd>;
 
     FrontEnd(IScanPreprocessor::SharedPtr scan_preprocessor,

@@ -19,20 +19,18 @@
 
 namespace lio_slam_shaw {
 
-struct GtsamMapOptimizerParams {
-    std::vector<double> prior_noise = {1e-12, 1e-12, 1e-12, 1e-12, 1e-12, 1e-12};
-
-    std::vector<double> odom_noise = {1e-6, 1e-6, 1e-6, 1e-4, 1e-4, 1e-4};
-
-    std::vector<double> odom_noise_degenerate = {1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
-
-    double isam2_relinearize_threshold = 0.1;
-    int isam2_relinearize_skip = 1;
-};
-
 class GtsamMapOptimizer : public core::IMapOptimizer {
 public:
-    explicit GtsamMapOptimizer(const GtsamMapOptimizerParams& params);
+    struct Config {
+        std::vector<double> prior_noise = {1e-12, 1e-12, 1e-12, 1e-12, 1e-12, 1e-12};
+        std::vector<double> odom_noise = {1e-6, 1e-6, 1e-6, 1e-4, 1e-4, 1e-4};
+        std::vector<double> odom_noise_degenerate = {1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
+
+        double isam2_relinearize_threshold = 0.1;
+        int isam2_relinearize_skip = 1;
+    };
+
+    explicit GtsamMapOptimizer(const Config& params);
     ~GtsamMapOptimizer() override = default;
 
     void addKeyframe(uint64_t keyframe_id, const core::ScanMatchResult& result) override;
@@ -47,7 +45,7 @@ private:
     static gtsam::Pose3 toGtsamPose(const Eigen::Isometry3d& pose);
     static Eigen::Isometry3d fromGtsamPose(const gtsam::Pose3& pose);
 
-    GtsamMapOptimizerParams params_;
+    Config params_;
 
     std::unique_ptr<gtsam::ISAM2> optimizer_;
 

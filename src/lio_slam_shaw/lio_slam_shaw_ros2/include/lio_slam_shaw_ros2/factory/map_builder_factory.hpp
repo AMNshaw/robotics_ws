@@ -8,25 +8,26 @@
 
 namespace lio_slam_shaw_ros2::factory {
 
-class RosLocalMapBuilderFactory : public lio_slam_shaw::map_builder::ILocalMapBuilderFactory {
-public:
-    RosLocalMapBuilderFactory(rclcpp::Node* node);
+namespace core = lio_slam_shaw::core;
+namespace map_builder = lio_slam_shaw::map_builder;
 
-    lio_slam_shaw::core::ILocalMapBuilder::SharedPtr create(
-        const Eigen::Isometry3d& T_base_lidar,
-        lio_slam_shaw::map_builder::LocalMapType type) const override;
+class RosLocalMapBuilderFactory : public map_builder::ILocalMapBuilderFactory {
+public:
+    RosLocalMapBuilderFactory(rclcpp::Node* node) : node_(node) {}
+
+    core::ILocalMapBuilder::SharedPtr create(const Eigen::Isometry3d& T_base_lidar,
+                                             map_builder::LocalMapType type) const override;
 
 private:
     rclcpp::Node* node_;
 };
 
-class RosGlobalMapBuilderFactory : public lio_slam_shaw::map_builder::IGlobalMapBuilderFactory {
+class RosGlobalMapBuilderFactory : public map_builder::IGlobalMapBuilderFactory {
 public:
-    RosGlobalMapBuilderFactory(rclcpp::Node* node);
+    RosGlobalMapBuilderFactory(rclcpp::Node* node) : node_(node) {}
 
-    lio_slam_shaw::core::IGlobalMapBuilder::SharedPtr create(
-        const Eigen::Isometry3d& T_base_lidar,
-        lio_slam_shaw::map_builder::GlobalMapType type) const override;
+    core::IGlobalMapBuilder::SharedPtr create(const Eigen::Isometry3d& T_base_lidar,
+                                              map_builder::GlobalMapType type) const override;
 
 private:
     rclcpp::Node* node_;

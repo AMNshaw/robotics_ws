@@ -60,7 +60,7 @@ protected:
         scan_matcher::IkdTreeScanMatcherParams smp;
         map_builder::IkdTreeLocalMapBuilderParams mbp;
         Eigen::Isometry3d T_imu_lidar = Eigen::Isometry3d::Identity();
-        SfmLioInitializerParams params;
+        Config params;
         params.min_init_scans = 3;  // irrelevant for this test
         init_ = std::make_shared<SfmLioInitializer>(smp, mbp, T_imu_lidar, params);
     }

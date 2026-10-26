@@ -7,8 +7,7 @@
 
 namespace lio_slam_shaw::map_builder {
 
-KeyframeGlobalMapBuilder::KeyframeGlobalMapBuilder(const KeyframeGlobalMapBuilderParams& params)
-    : params_(params) {}
+KeyframeGlobalMapBuilder::KeyframeGlobalMapBuilder(const Config& params) : params_(params) {}
 
 std::optional<core::Keyframe::SharedPtr> KeyframeGlobalMapBuilder::addKeyFrame(
     const core::LidarFrame::SharedPtr& frame) {

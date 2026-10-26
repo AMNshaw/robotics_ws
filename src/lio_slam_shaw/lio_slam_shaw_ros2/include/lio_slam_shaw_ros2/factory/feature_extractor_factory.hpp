@@ -7,13 +7,15 @@
 
 namespace lio_slam_shaw_ros2::factory {
 
-class RosFeatureExtractorFactory
-    : public lio_slam_shaw::feature_extractor::IFeatureExtractorFactory {
-public:
-    RosFeatureExtractorFactory(rclcpp::Node* node);
+namespace core = lio_slam_shaw::core;
+namespace feature_extractor = lio_slam_shaw::feature_extractor;
 
-    lio_slam_shaw::core::IFeatureExtractor::SharedPtr create(
-        lio_slam_shaw::feature_extractor::FeatureExtractorType type) const override;
+class RosFeatureExtractorFactory : public feature_extractor::IFeatureExtractorFactory {
+public:
+    RosFeatureExtractorFactory(rclcpp::Node* node) : node_(node) {}
+
+    feature_extractor::IFeatureExtractor::SharedPtr create(
+        feature_extractor::FeatureExtractorType type) const override;
 
 private:
     rclcpp::Node* node_;

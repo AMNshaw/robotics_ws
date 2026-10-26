@@ -11,48 +11,34 @@
 
 namespace lio_slam_shaw::odometry_estimator {
 
-struct FastLioOdometryParams {
-    // IMU noise (continuous-time, same convention as gtsam_imu_preintegrator)
-    double acc_noise = 3.9939570888117902e-03;
-    double gyr_noise = 1.5636343949698187e-03;
-    double acc_bias_noise = 6.4356659353532566e-05;
-    double gyr_bias_noise = 3.5640318696367613e-05;
-    double measurement_noise = 0.01;  // point-to-plane residual std-dev [m]
-
-    // iEKF solver
-    int max_iterations = 5;
-    double state_converge_threshold = 1e-3;  // ||dx|| < threshold → converge
-    bool estimate_gravity = false;           // keep gravity fixed after initialization by default
-
-    // Point-to-plane matching (reuses the same scan search logic)
-    int num_nearest_neighbors = 5;
-    int min_plane_points = 3;
-    double plane_valid_threshold = 0.1;  // max eigenvalue ratio for valid
-    float search_radius = 1.0f;
-    double min_plane_eigenvalue_ratio = 0.1;   // planarity check
-    double max_point_to_plane_distance = 0.5;  // outlier rejection threshold
-};
-
-// iEKF state vector (17-DOF on manifold):
-//   rotation    R ∈ SO(3)   — world←body
-//   position    p ∈ R^3     — in world frame
-//   velocity    v ∈ R^3     — in world frame
-//   accel bias  b_a ∈ R^3
-//   gyro  bias  b_g ∈ R^3
-//   gravity dir δg ∈ R^2    — tangent-space perturbation of g on S²(G)
-//
-// Error-state ordering:
-//   [δp(0:3), δv(3:6), δθ(6:9), δb_a(9:12), δb_g(12:15), δg(15:17)]
-
 static constexpr int kStateDim = 17;
 
 class FastLioOdometry : public core::IOdometryEstimator {
 public:
-    using SharedPtr = std::shared_ptr<FastLioOdometry>;
+    struct Config {
+        double acc_noise = 3.9939570888117902e-03;
+        double gyr_noise = 1.5636343949698187e-03;
+        double acc_bias_noise = 6.4356659353532566e-05;
+        double gyr_bias_noise = 3.5640318696367613e-05;
+        double measurement_noise = 0.01;  // point-to-plane residual std-dev [m]
 
-    FastLioOdometry(std::shared_ptr<map_builder::IkdTreeLocalMapBuilder> local_map,
-                    const Eigen::Isometry3d& T_base_lidar, const Eigen::Isometry3d& T_base_imu,
-                    const FastLioOdometryParams& params = {});
+        // iEKF solver
+        int max_iterations = 5;
+        double state_converge_threshold = 1e-3;  // ||dx|| < threshold → converge
+        bool estimate_gravity = false;  // keep gravity fixed after initialization by default
+
+        // Point-to-plane matching (reuses the same scan search logic)
+        int num_nearest_neighbors = 5;
+        int min_plane_points = 3;
+        double plane_valid_threshold = 0.1;  // max eigenvalue ratio for valid
+        float search_radius = 1.0f;
+        double min_plane_eigenvalue_ratio = 0.1;   // planarity check
+        double max_point_to_plane_distance = 0.5;  // outlier rejection threshold
+    };
+
+    explicit FastLioOdometry(std::shared_ptr<map_builder::IkdTreeLocalMapBuilder> local_map,
+                             const Eigen::Isometry3d& T_base_lidar,
+                             const Eigen::Isometry3d& T_base_imu, const Config& params = {});
     ~FastLioOdometry() override = default;
 
     // IOdometryEstimator interface
@@ -64,6 +50,16 @@ public:
     void setInitialState(const core::LioInitResult& init_result) override;
 
 private:
+    // iEKF state vector (17-DOF on manifold):
+    //   rotation    R ∈ SO(3)   — world←body
+    //   position    p ∈ R^3     — in world frame
+    //   velocity    v ∈ R^3     — in world frame
+    //   accel bias  b_a ∈ R^3
+    //   gyro  bias  b_g ∈ R^3
+    //   gravity dir δg ∈ R^2    — tangent-space perturbation of g on S²(G)
+    //
+    // Error-state ordering:
+    //   [δp(0:3), δv(3:6), δθ(6:9), δb_a(9:12), δb_g(12:15), δg(15:17)]
     struct IeskfState {
         core::Timestamp timestamp;
         Eigen::Matrix3d R = Eigen::Matrix3d::Identity();
@@ -145,7 +141,7 @@ private:
                                      const Eigen::Vector3d& sensor_origin_in_map,
                                      const Eigen::Matrix3d& R_map_body) const;
 
-    FastLioOdometryParams params_;
+    Config params_;
     std::shared_ptr<map_builder::IkdTreeLocalMapBuilder> map_builder_;
 
     Eigen::Isometry3d T_base_lidar_ = Eigen::Isometry3d::Identity();

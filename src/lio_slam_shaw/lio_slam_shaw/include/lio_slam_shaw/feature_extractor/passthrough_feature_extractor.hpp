@@ -8,7 +8,8 @@ namespace lio_slam_shaw::feature_extractor {
 
 class PassthroughFeatureExtractor : public core::IFeatureExtractor {
 public:
-    PassthroughFeatureExtractor() = default;
+    struct Config {};
+    explicit PassthroughFeatureExtractor() = default;
     ~PassthroughFeatureExtractor() override = default;
 
     core::FeatureSet extract(const core::LidarData& deskewed_lidar) override;

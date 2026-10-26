@@ -6,25 +6,25 @@
 
 #include "lio_slam_shaw/core/i_loop_closure_detector.hpp"
 
-namespace lio_slam_shaw {
-
-struct IcpLoopClosureDetectorParams {
-    double search_radius = 15.0;
-    double min_time_gap_sec = 30.0;
-    int local_map_keyframe_num = 25;
-
-    float icp_downsample_leaf = 0.4f;
-    double icp_max_corr_dist = 0.3;
-    int icp_max_iterations = 100;
-    double fitness_score_threshold = 0.3;
-
-    double noise_sigma_rot = 0.1;
-    double noise_sigma_trans = 0.1;
-};
+namespace lio_slam_shaw::loop_closure_detector {
 
 class IcpLoopClosureDetector : public core::ILoopClosureDetector {
 public:
-    explicit IcpLoopClosureDetector(const IcpLoopClosureDetectorParams& params);
+    struct Config {
+        double search_radius = 15.0;
+        double min_time_gap_sec = 30.0;
+        int local_map_keyframe_num = 25;
+
+        float icp_downsample_leaf = 0.4f;
+        double icp_max_corr_dist = 0.3;
+        int icp_max_iterations = 100;
+        double fitness_score_threshold = 0.3;
+
+        double noise_sigma_rot = 0.1;
+        double noise_sigma_trans = 0.1;
+    };
+
+    explicit IcpLoopClosureDetector(const Config& params);
     ~IcpLoopClosureDetector() override = default;
 
     std::optional<core::LoopConstraint> detect(
@@ -41,9 +41,9 @@ private:
         const core::Keyframe::SharedPtr& candidate,
         const std::vector<core::Keyframe::SharedPtr>& all_keyframes) const;
 
-    IcpLoopClosureDetectorParams params_;
+    Config params_;
 };
 
-}  // namespace lio_slam_shaw
+}  // namespace lio_slam_shaw::loop_closure_detector
 
 #endif  // LIO_SLAM_SHAW__LOOP_CLOSURE__ICP_LOOP_CLOSURE_DETECTOR_HPP_

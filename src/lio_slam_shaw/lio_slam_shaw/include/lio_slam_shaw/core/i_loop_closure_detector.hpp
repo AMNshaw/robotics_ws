@@ -22,6 +22,7 @@ struct LoopConstraint {
 class ILoopClosureDetector {
 public:
     using SharedPtr = std::shared_ptr<ILoopClosureDetector>;
+    using UniquePtr = std::unique_ptr<ILoopClosureDetector>;
     using ConstSharedPtr = std::shared_ptr<const ILoopClosureDetector>;
 
     virtual ~ILoopClosureDetector() = default;

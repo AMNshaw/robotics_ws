@@ -7,14 +7,20 @@
 
 namespace lio_slam_shaw_ros2::factory {
 
-class RosLoopClosureDetectorFactory
-    : public lio_slam_shaw::loop_closure_detector::ILoopClosureDetectorFactory {
-public:
-    RosLoopClosureDetectorFactory(rclcpp::Node* node);
+namespace core = lio_slam_shaw::core;
+namespace loop_closure_detector = lio_slam_shaw::loop_closure_detector;
 
-    virtual lio_slam_shaw::core::ILoopClosureDetector::SharedPtr create(rclcpp::Node* node) = 0;
+class RosLoopClosureDetectorFactory : public loop_closure_detector::ILoopClosureDetectorFactory {
+public:
+    RosLoopClosureDetectorFactory(rclcpp::Node* node) : node_(node) {}
+
+    core::ILoopClosureDetector::SharedPtr create(
+        loop_closure_detector::LoopClosureDetectorType type) const override;
 
 private:
+    core::ILoopClosureDetector::SharedPtr createScanContext() const;
+    core::ILoopClosureDetector::SharedPtr createICP() const;
+
     rclcpp::Node* node_;
 };
 

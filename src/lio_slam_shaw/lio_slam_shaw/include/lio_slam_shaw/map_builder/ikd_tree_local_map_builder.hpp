@@ -15,21 +15,19 @@ namespace lio_slam_shaw::map_builder {
 
 class IkdTreeLocalReadSession;  // forward decl
 
-struct IkdTreeLocalMapBuilderParams {
-    float ikd_delete_param = 0.5f;
-    float ikd_balance_param = 0.6f;
-    float ikd_downsample_size = 0.3f;
-    double box_trim_half_length = 50.0;
-    Eigen::Isometry3d T_base_lidar = Eigen::Isometry3d::Identity();
-};
-
 /// Local map builder backed by an incrementally-updated KD-tree.
 /// Never rebuilt — only grows via addScan and shrinks via boxTrim.
 class IkdTreeLocalMapBuilder : public core::ILocalMapBuilder {
 public:
-    using SharedPtr = std::shared_ptr<IkdTreeLocalMapBuilder>;
+    struct Config {
+        float ikd_delete_param = 0.5f;
+        float ikd_balance_param = 0.6f;
+        float ikd_downsample_size = 0.3f;
+        double box_trim_half_length = 50.0;
+        Eigen::Isometry3d T_base_lidar = Eigen::Isometry3d::Identity();
+    };
 
-    explicit IkdTreeLocalMapBuilder(const IkdTreeLocalMapBuilderParams& params = {});
+    explicit IkdTreeLocalMapBuilder(const Config& params = {});
     ~IkdTreeLocalMapBuilder() override = default;
 
     void addScan(const core::LidarFrame::SharedPtr& frame) override;
@@ -47,7 +45,7 @@ private:
 
     void boxTrim(const Eigen::Vector3d& center, double half_length);
 
-    IkdTreeLocalMapBuilderParams params_;
+    Config params_;
     bool is_first_frame_ = true;
     mutable std::shared_mutex ikd_tree_mutex_;
     std::shared_ptr<KD_TREE<core::PointXYZIRT>> ikd_tree_;

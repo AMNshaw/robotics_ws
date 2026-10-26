@@ -22,6 +22,7 @@ namespace lio_slam_shaw::core {
 class SlamProcessor {
 public:
     using SharedPtr = std::shared_ptr<SlamProcessor>;
+    using UniquePtr = std::unique_ptr<SlamProcessor>;
     using ConstSharedPtr = std::shared_ptr<const SlamProcessor>;
 
     using OdometryCallback = std::function<void(const NavState& odom_state)>;

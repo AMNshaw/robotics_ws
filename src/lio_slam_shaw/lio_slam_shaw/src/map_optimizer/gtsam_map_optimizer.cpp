@@ -7,7 +7,7 @@ namespace lio_slam_shaw {
 
 using gtsam::symbol_shorthand::X;
 
-GtsamMapOptimizer::GtsamMapOptimizer(const GtsamMapOptimizerParams& params) : params_(params) {
+GtsamMapOptimizer::GtsamMapOptimizer(const Config& params) : params_(params) {
     gtsam::ISAM2Params isam_params;
     isam_params.relinearizeThreshold = params_.isam2_relinearize_threshold;
     isam_params.relinearizeSkip = params_.isam2_relinearize_skip;

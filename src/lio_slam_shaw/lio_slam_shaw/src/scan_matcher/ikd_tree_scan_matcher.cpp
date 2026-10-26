@@ -8,8 +8,7 @@
 namespace lio_slam_shaw::scan_matcher {
 
 IkdTreeScanMatcher::IkdTreeScanMatcher(
-    std::shared_ptr<map_builder::IkdTreeLocalMapBuilder> local_map,
-    const IkdTreeScanMatcherParams& params)
+    std::shared_ptr<map_builder::IkdTreeLocalMapBuilder> local_map, const Config& params)
     : local_map_(std::move(local_map)), params_(params) {
     T_base_lidar_ = params_.T_base_lidar;
 }

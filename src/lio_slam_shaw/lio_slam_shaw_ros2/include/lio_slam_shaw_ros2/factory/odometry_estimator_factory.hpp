@@ -8,23 +8,24 @@
 
 namespace lio_slam_shaw_ros2::factory {
 
-enum class OdometryEstimatorType { FAST_LIO };
+namespace core = lio_slam_shaw::core;
+namespace odometry_estimator = lio_slam_shaw::odometry_estimator;
+namespace map_builder = lio_slam_shaw::map_builder;
 
 class RosOdometryEstimatorFactory
     : public lio_slam_shaw::odometry_estimator::IOdometryEstimatorFactory {
 public:
-    RosOdometryEstimatorFactory(rclcpp::Node* node);
+    RosOdometryEstimatorFactory(rclcpp::Node* node) : node_(node) {}
 
-    lio_slam_shaw::core::IOdometryEstimator::SharedPtr create(
+    core::IOdometryEstimator::SharedPtr create(
         const Eigen::Isometry3d& T_base_lidar, const Eigen::Isometry3d& T_base_imu,
-        lio_slam_shaw::core::ILocalMapBuilder::SharedPtr local_map,
-        lio_slam_shaw::odometry_estimator::OdometryEstimatorType type) const override;
+        core::ILocalMapBuilder::SharedPtr local_map,
+        odometry_estimator::OdometryEstimatorType type) const override;
 
 private:
-    lio_slam_shaw::core::IOdometryEstimator::SharedPtr createFastLio(
+    core::IOdometryEstimator::SharedPtr createFastLio(
         const Eigen::Isometry3d& T_base_lidar, const Eigen::Isometry3d& T_base_imu,
-        std::shared_ptr<lio_slam_shaw::map_builder::IkdTreeLocalMapBuilder> local_map)
-        const override;
+        core::ILocalMapBuilder::SharedPtr local_map) const override;
 
     rclcpp::Node* node_;
 };

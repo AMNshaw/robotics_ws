@@ -8,12 +8,15 @@
 
 namespace lio_slam_shaw_ros2::factory {
 
-class RosLioInitializerFactory : public lio_slam_shaw::initializer::ILioInitializerFactory {
-public:
-    RosLioInitializerFactory(rclcpp::Node* node);
+namespace core = lio_slam_shaw::core;
+namespace initializer = lio_slam_shaw::initializer;
 
-    lio_slam_shaw::core::ILioInitializer::SharedPtr create(
-        const Eigen::Isometry3d& T_base_lidar, const Eigen::Isometry3d& T_base_imu) const override;
+class RosLioInitializerFactory : public initializer::ILioInitializerFactory {
+public:
+    RosLioInitializerFactory(rclcpp::Node* node) : node_(node) {}
+
+    core::ILioInitializer::SharedPtr create(const Eigen::Isometry3d& T_base_lidar,
+                                            const Eigen::Isometry3d& T_base_imu) const override;
 
 private:
     rclcpp::Node* node_;
