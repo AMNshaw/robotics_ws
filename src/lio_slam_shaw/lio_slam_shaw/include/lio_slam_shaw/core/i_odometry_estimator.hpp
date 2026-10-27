@@ -19,6 +19,8 @@ struct OdometryResult {
 class IOdometryEstimator {
 public:
     using SharedPtr = std::shared_ptr<IOdometryEstimator>;
+    using UniquePtr = std::unique_ptr<IOdometryEstimator>;
+    using ConstSharedPtr = std::shared_ptr<const IOdometryEstimator>;
     virtual ~IOdometryEstimator() = default;
 
     // Called on every incoming IMU message. The estimator buffers IMU data

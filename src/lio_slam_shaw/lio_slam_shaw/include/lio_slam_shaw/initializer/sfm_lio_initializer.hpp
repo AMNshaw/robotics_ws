@@ -30,12 +30,12 @@ namespace lio_slam_shaw::initializer {
 class SfmLioInitializer : public core::ILioInitializer {
 public:
     struct Config {
+        scan_matcher::IkdTreeScanMatcher::Config scan_matcher_params;
+        map_builder::IkdTreeLocalMapBuilder::Config map_builder_params;
+
         int min_init_scans = 10;
-
         bool align_gravity = false;
-
         float voxel_leaf_size = 0.5f;
-
         double acc_noise = 3.9939570888117902e-03;
         double gyr_noise = 1.5636343949698187e-03;
     };
@@ -43,7 +43,7 @@ public:
     explicit SfmLioInitializer(
         const scan_matcher::IkdTreeScanMatcher::Config& scan_matcher_params,
         const map_builder::IkdTreeLocalMapBuilder::Config& map_builder_params,
-        const Eigen::Isometry3d& T_imu_lidar, const Config& params = {});
+        const Eigen::Isometry3d& T_imu_lidar, const Config& params);
     ~SfmLioInitializer() override = default;
 
     void addImu(const core::ImuData& imu) override;

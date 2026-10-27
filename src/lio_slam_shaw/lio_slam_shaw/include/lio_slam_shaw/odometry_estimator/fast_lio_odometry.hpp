@@ -38,7 +38,7 @@ public:
 
     explicit FastLioOdometry(std::shared_ptr<map_builder::IkdTreeLocalMapBuilder> local_map,
                              const Eigen::Isometry3d& T_base_lidar,
-                             const Eigen::Isometry3d& T_base_imu, const Config& params = {});
+                             const Eigen::Isometry3d& T_base_imu, const Config& params);
     ~FastLioOdometry() override = default;
 
     // IOdometryEstimator interface

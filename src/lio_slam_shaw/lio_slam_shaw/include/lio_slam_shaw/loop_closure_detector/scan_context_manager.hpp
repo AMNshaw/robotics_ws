@@ -30,7 +30,7 @@ public:
         bool enable_reverse_search = false;  // SC++: also try column-reversed descriptor
     };
 
-    explicit ScanContextManager(const Config& params = {});
+    explicit ScanContextManager(const Config& params);
 
     /// Compute SC descriptor from a PCL cloud (body/LiDAR frame).
     ScDescriptor getDescriptor(const core::PointCloudIRTConstPtr& cloud) const;

@@ -27,7 +27,7 @@ public:
         Eigen::Isometry3d T_base_lidar = Eigen::Isometry3d::Identity();
     };
 
-    explicit IkdTreeLocalMapBuilder(const Config& params = {});
+    explicit IkdTreeLocalMapBuilder(const Config& params);
     ~IkdTreeLocalMapBuilder() override = default;
 
     void addScan(const core::LidarFrame::SharedPtr& frame) override;

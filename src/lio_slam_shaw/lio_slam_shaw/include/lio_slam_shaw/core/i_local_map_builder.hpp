@@ -14,6 +14,7 @@ namespace lio_slam_shaw::core {
 class ILocalMapBuilder {
 public:
     using SharedPtr = std::shared_ptr<ILocalMapBuilder>;
+    using UniquePtr = std::unique_ptr<ILocalMapBuilder>;
     using ConstSharedPtr = std::shared_ptr<const ILocalMapBuilder>;
 
     virtual ~ILocalMapBuilder() = default;

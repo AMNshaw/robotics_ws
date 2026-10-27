@@ -9,6 +9,7 @@ namespace lio_slam_shaw::core {
 class IScanMatcher {
 public:
     using SharedPtr = std::shared_ptr<IScanMatcher>;
+    using UniquePtr = std::unique_ptr<IScanMatcher>;
     using ConstSharedPtr = std::shared_ptr<const IScanMatcher>;
     IScanMatcher() = default;
     virtual ~IScanMatcher() = default;

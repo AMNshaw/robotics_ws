@@ -20,8 +20,8 @@ public:
     using UniquePtr = std::unique_ptr<BackEnd>;
     using ConstSharedPtr = std::shared_ptr<const BackEnd>;
 
-    BackEnd(IGlobalMapBuilder::SharedPtr global_map, IMapOptimizer::UniquePtr map_optimizer,
-            ILoopClosureDetector::UniquePtr loop_closure_detector);
+    BackEnd(IGlobalMapBuilder::SharedPtr global_map, IMapOptimizer::SharedPtr map_optimizer,
+            ILoopClosureDetector::SharedPtr loop_closure_detector);
     ~BackEnd() = default;
 
     /// Check if a frame qualifies as a keyframe. Returns the keyframe if yes.
@@ -46,8 +46,8 @@ public:
 
 private:
     IGlobalMapBuilder::SharedPtr global_map_;
-    IMapOptimizer::UniquePtr map_optimizer_;
-    ILoopClosureDetector::UniquePtr loop_closure_detector_;
+    IMapOptimizer::SharedPtr map_optimizer_;
+    ILoopClosureDetector::SharedPtr loop_closure_detector_;
 
     std::optional<Eigen::Isometry3d> pending_correction_;
     std::vector<std::pair<uint64_t, Eigen::Isometry3d>> pending_corrected_poses_;

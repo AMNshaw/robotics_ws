@@ -15,7 +15,7 @@ public:
         Eigen::Isometry3d T_base_lidar = Eigen::Isometry3d::Identity();
     };
 
-    explicit ImuDeskewPreprocessor(const Config& params = Config{});
+    explicit ImuDeskewPreprocessor(const Config& params);
     ~ImuDeskewPreprocessor() override = default;
 
     core::LidarData processCloud(const std::vector<core::NavState>& nav_state_snapshot,

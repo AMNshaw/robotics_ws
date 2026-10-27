@@ -29,7 +29,7 @@ public:
     using LocalVizCallback = std::function<void(const LocalVizData& data)>;
     using GlobalVizCallback = std::function<void(const GlobalVizData& data)>;
 
-    explicit SlamProcessor(FrontEnd::SharedPtr frontend, BackEnd::SharedPtr backend);
+    explicit SlamProcessor(FrontEnd::UniquePtr frontend, BackEnd::UniquePtr backend);
     ~SlamProcessor();
     SlamProcessor(const SlamProcessor&) = delete;
     SlamProcessor& operator=(const SlamProcessor&) = delete;
@@ -51,8 +51,8 @@ private:
     void localVizThread();
     void globalVizThread();
 
-    FrontEnd::SharedPtr front_end_;
-    BackEnd::SharedPtr back_end_;
+    FrontEnd::UniquePtr front_end_;
+    BackEnd::UniquePtr back_end_;
 
     std::atomic<bool> run_{false};
     std::thread frontend_thread_;

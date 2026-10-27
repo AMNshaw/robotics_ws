@@ -10,6 +10,7 @@ namespace lio_slam_shaw::core {
 class IFeatureExtractor {
 public:
     using SharedPtr = std::shared_ptr<IFeatureExtractor>;
+    using UniquePtr = std::unique_ptr<IFeatureExtractor>;
     using ConstSharedPtr = std::shared_ptr<const IFeatureExtractor>;
 
     virtual ~IFeatureExtractor() = default;

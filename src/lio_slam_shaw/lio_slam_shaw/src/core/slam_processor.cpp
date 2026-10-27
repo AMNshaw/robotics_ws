@@ -5,7 +5,7 @@
 
 namespace lio_slam_shaw::core {
 
-SlamProcessor::SlamProcessor(FrontEnd::SharedPtr frontend, BackEnd::SharedPtr backend)
+SlamProcessor::SlamProcessor(FrontEnd::UniquePtr frontend, BackEnd::UniquePtr backend)
     : front_end_(std::move(frontend)), back_end_(std::move(backend)) {}
 
 SlamProcessor::~SlamProcessor() {

@@ -21,7 +21,7 @@ public:
         Eigen::Isometry3d T_base_lidar = Eigen::Isometry3d::Identity();
     };
 
-    explicit KeyframeGlobalMapBuilder(const Config& params = {});
+    explicit KeyframeGlobalMapBuilder(const Config& params);
     ~KeyframeGlobalMapBuilder() override = default;
 
     std::optional<core::Keyframe::SharedPtr> addKeyFrame(

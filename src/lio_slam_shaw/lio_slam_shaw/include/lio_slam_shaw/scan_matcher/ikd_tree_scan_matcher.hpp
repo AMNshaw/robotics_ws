@@ -39,7 +39,7 @@ public:
     };
 
     explicit IkdTreeScanMatcher(std::shared_ptr<map_builder::IkdTreeLocalMapBuilder> local_map,
-                                const Config& params = {});
+                                const Config& params);
 
     void setLidarExtrinsics(const Eigen::Isometry3d& T_base_lidar) override;
     core::ScanMatchResult match(const core::FeatureSet& features,

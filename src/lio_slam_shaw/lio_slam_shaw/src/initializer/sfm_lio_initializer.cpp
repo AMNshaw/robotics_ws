@@ -56,8 +56,8 @@ SfmLioInitializer::SfmLioInitializer(
     const map_builder::IkdTreeLocalMapBuilder::Config& map_builder_params,
     const Eigen::Isometry3d& T_imu_lidar, const Config& params)
     : params_(params),
-      map_builder_params_(map_builder_params),
-      scan_matcher_params_(scan_matcher_params),
+      map_builder_params_(params.map_builder_params),
+      scan_matcher_params_(params.scan_matcher_params),
       T_imu_lidar_(T_imu_lidar) {
     map_builder_ = std::make_shared<map_builder::IkdTreeLocalMapBuilder>(map_builder_params);
     scan_matcher_ =

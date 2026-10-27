@@ -13,7 +13,6 @@ namespace lio_slam_shaw::factory {
 struct FastLioFrontEndConfig {
     size_t max_pending_lidar_queue = 0;
     lidar_preprocessor::ImuDeskewPreprocessor::Config preprocessor_config;
-    feature_extractor::PassthroughFeatureExtractor::Config extractor_config;
     map_builder::IkdTreeLocalMapBuilder::Config local_map_builder_config;
     odometry_estimator::FastLioOdometry::Config odometry_estimator_config;
 };

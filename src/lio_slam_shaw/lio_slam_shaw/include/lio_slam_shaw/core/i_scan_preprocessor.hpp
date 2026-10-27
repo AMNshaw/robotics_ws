@@ -10,6 +10,7 @@ namespace lio_slam_shaw::core {
 class IScanPreprocessor {
 public:
     using SharedPtr = std::shared_ptr<IScanPreprocessor>;
+    using UniquePtr = std::unique_ptr<IScanPreprocessor>;
     using ConstSharedPtr = std::shared_ptr<const IScanPreprocessor>;
 
     IScanPreprocessor() = default;

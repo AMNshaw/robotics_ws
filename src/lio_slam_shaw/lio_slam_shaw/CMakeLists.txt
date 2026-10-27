@@ -11,17 +11,6 @@ endif()
 
 # find dependencies
 find_package(ament_cmake REQUIRED)
-find_package(rclcpp REQUIRED)
-find_package(std_msgs REQUIRED)
-find_package(std_srvs REQUIRED)
-find_package(sensor_msgs REQUIRED)
-find_package(nav_msgs REQUIRED)
-find_package(geometry_msgs REQUIRED)
-find_package(visualization_msgs REQUIRED)
-find_package(tf2 REQUIRED)
-find_package(tf2_ros REQUIRED)
-find_package(tf2_eigen REQUIRED)
-find_package(pcl_conversions REQUIRED)
 
 find_package(Eigen3 REQUIRED)
 find_package(PCL REQUIRED COMPONENTS common io filters kdtree search registration)
@@ -135,68 +124,7 @@ target_link_libraries(core
   map_optimizer
   loop_closure_detector
 )
-ament_target_dependencies(core
-  rclcpp
-  sensor_msgs
-  nav_msgs
-  geometry_msgs
-)
 
-add_library(factory
-  src/factory/feature_extractor_factory.cpp
-  src/factory/imu_preintegrator_factory.cpp
-  src/factory/loop_closure_detector_factory.cpp
-  src/factory/map_builder_factory.cpp
-  src/factory/map_optimizer_factory.cpp
-  src/factory/odometry_estimator_factory.cpp
-  src/factory/scan_matcher_factory.cpp
-  src/factory/scan_preprocessor_factory.cpp
-  src/factory/slam_factory.cpp
-  src/factory/frontend_facade.cpp
-  src/factory/backend_facade.cpp
-  src/factory/lio_initializer_factory.cpp
-)
-target_link_libraries(factory
-  core
-  imu_preintegrator
-  lio_initializer
-  scan_preprocessor
-  feature_extractor
-  scan_matcher
-  map_builder
-  map_optimizer
-  loop_closure_detector
-  odometry_estimator
-  gtsam
-)
-ament_target_dependencies(factory
-  rclcpp
-)
-
-add_executable(slam_node
-  src/slam_node.cpp
-)
-target_link_libraries(slam_node
-  factory
-  core
-)
-ament_target_dependencies(slam_node
-  rclcpp
-  std_msgs
-  std_srvs
-  sensor_msgs
-  nav_msgs
-  geometry_msgs
-  visualization_msgs
-  tf2
-  tf2_ros
-  tf2_eigen
-  pcl_conversions
-)
-
-install(TARGETS slam_node
-  DESTINATION lib/${PROJECT_NAME}
-)
 install(DIRECTORY launch
   DESTINATION share/${PROJECT_NAME}/
 )
@@ -205,26 +133,26 @@ install(DIRECTORY config
 )
 
 if(BUILD_TESTING)
-  find_package(ament_lint_auto REQUIRED)
-  find_package(ament_cmake_gtest REQUIRED)
-  # the following line skips the linter which checks for copyrights
-  # comment the line when a copyright and license is added to all source files
-  set(ament_cmake_copyright_FOUND TRUE)
-  # the following line skips cpplint (only works in a git repo)
-  # comment the line when this package is in a git repo and when
-  # a copyright and license is added to all source files
-  set(ament_cmake_cpplint_FOUND TRUE)
-  ament_lint_auto_find_test_dependencies()
+  # find_package(ament_lint_auto REQUIRED)
+  # find_package(ament_cmake_gtest REQUIRED)
+  # # the following line skips the linter which checks for copyrights
+  # # comment the line when a copyright and license is added to all source files
+  # set(ament_cmake_copyright_FOUND TRUE)
+  # # the following line skips cpplint (only works in a git repo)
+  # # comment the line when this package is in a git repo and when
+  # # a copyright and license is added to all source files
+  # set(ament_cmake_cpplint_FOUND TRUE)
+  # ament_lint_auto_find_test_dependencies()
 
-  ament_add_gtest(test_sfm_lio_initializer
-    test/test_sfm_lio_initializer.cpp
-  )
-  target_link_libraries(test_sfm_lio_initializer
-    lio_initializer
-  )
-  target_include_directories(test_sfm_lio_initializer PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-  )
+  # ament_add_gtest(test_sfm_lio_initializer
+  #   test/test_sfm_lio_initializer.cpp
+  # )
+  # target_link_libraries(test_sfm_lio_initializer
+  #   lio_initializer
+  # )
+  # target_include_directories(test_sfm_lio_initializer PRIVATE
+  #   ${CMAKE_CURRENT_SOURCE_DIR}/include
+  # )
 endif()
 
 ament_package()

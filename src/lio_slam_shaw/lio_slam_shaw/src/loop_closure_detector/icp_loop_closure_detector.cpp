@@ -14,7 +14,7 @@
 #include <pcl/search/impl/kdtree.hpp>
 #include <pcl/search/impl/search.hpp>
 
-namespace lio_slam_shaw {
+namespace lio_slam_shaw::loop_closure_detector {
 
 IcpLoopClosureDetector::IcpLoopClosureDetector(const Config& params) : params_(params) {}
 
@@ -139,4 +139,4 @@ core::PointCloudIRTPtr IcpLoopClosureDetector::buildLocalMap(
     return local_map;
 }
 
-}  // namespace lio_slam_shaw
+}  // namespace lio_slam_shaw::loop_closure_detector
