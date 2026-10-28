@@ -14,18 +14,18 @@ IkdTreeLocalMapBuilder::IkdTreeLocalMapBuilder(const Config& params) : params_(p
 }
 
 void IkdTreeLocalMapBuilder::addScan(const core::LidarFrame::SharedPtr& frame) {
-    const auto& cloud_body = frame->features.raw_deskewed;
-    if (!cloud_body || cloud_body->empty()) return;
+    const auto& cloud_lidar = frame->features.raw_deskewed;
+    if (!cloud_lidar || cloud_lidar->empty()) return;
 
     const Eigen::Isometry3d& T_map_body = frame->matched_result.pose;
     const Eigen::Isometry3d T_map_lidar = T_map_body * params_.T_base_lidar;
 
-    size_t n_points = cloud_body->size();
+    size_t n_points = cloud_lidar->size();
     KD_TREE<core::PointXYZIRT>::PointVector points_world(n_points);
 
 #pragma omp parallel for num_threads(4) schedule(dynamic)
     for (size_t i = 0; i < n_points; ++i) {
-        const auto& p = (*cloud_body)[i];
+        const auto& p = (*cloud_lidar)[i];
         Eigen::Vector3d pw = T_map_lidar * Eigen::Vector3d(p.x, p.y, p.z);
         points_world[i] = p;
         points_world[i].x = static_cast<float>(pw.x());
