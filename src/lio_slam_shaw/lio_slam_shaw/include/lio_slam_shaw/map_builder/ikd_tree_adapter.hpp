@@ -51,10 +51,6 @@ private:
     bool is_first_frame_ = true;
     mutable std::shared_mutex ikd_tree_mutex_;
     std::shared_ptr<KD_TREE<core::PointXYZIRT>> ikd_tree_;
-
-    int k_query_neighbors_ = 5;
-    int min_plane_points_ = 3;
-    double plane_valid_threshold_ = 0.1;
 };
 
 }  // namespace lio_slam_shaw::map_builder
