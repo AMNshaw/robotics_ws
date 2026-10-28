@@ -38,5 +38,6 @@
     "C_Cpp.clang_format_fallbackStyle": "Google",
     "C_Cpp.formatting": "clangFormat",
     "cmake.sourceDirectory": "/home/amnshaw/robotics_ws/ThirdParty/gtsam",
-    "ros.distro": "humble"
+    "ros.distro": "humble",
+    "ROS2.distro": "humble"
 }

@@ -1,3 +1,0 @@
-[submodule "ThirdParty/gtsam"]
-	path = ThirdParty/gtsam
-	url = https://github.com/borglab/gtsam.git

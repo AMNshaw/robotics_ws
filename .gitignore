@@ -7,6 +7,6 @@ log/
 *.db3
 *.mcap
 
-src/lio_slam_shaw/lio_slam_shaw/dataset/bag/
-src/lio_slam_shaw/lio_slam_shaw/dataset/raw/
+*/dataset/bag/
+*/dataset/raw/
 src/FAST_LIO/

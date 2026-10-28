@@ -20,6 +20,14 @@ find_package(tf2_ros REQUIRED)
 find_package(tf2_eigen REQUIRED)
 find_package(pcl_conversions REQUIRED)
 
+
+install(DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME}/
+)
+install(DIRECTORY config
+  DESTINATION share/${PROJECT_NAME}/
+)
+
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   # the following line skips the linter which checks for copyrights
